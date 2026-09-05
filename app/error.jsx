@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect } from "react";
+import { RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/stat-card";
 
 /**
  * App Router error boundary. Receives the thrown error and a reset() callback
@@ -15,23 +17,19 @@ export default function Error({ error, reset }) {
   return (
     <main
       id="main-content"
-      className="flex min-h-screen flex-col items-center justify-center gap-6 px-4 text-center"
+      className="flex min-h-screen items-center justify-center px-4"
     >
-      <div className="space-y-2">
-        <p className="font-display text-sm font-medium uppercase tracking-widest text-muted-foreground">
-          Something went wrong
-        </p>
-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          An unexpected error occurred
-        </h1>
-        <p className="mx-auto max-w-md text-muted-foreground">
-          Sorry about that. You can try again, and if the problem persists please
-          come back later.
-        </p>
-      </div>
-      <Button type="button" onClick={() => reset()}>
-        Try again
-      </Button>
+      <EmptyState
+        icon={<TriangleAlert className="h-6 w-6 text-destructive" aria-hidden="true" />}
+        title="An unexpected error occurred"
+        description="Sorry about that. You can try again, and if the problem persists please come back later."
+        action={
+          <Button type="button" onClick={() => reset()} className="mt-2 gap-2">
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            Try again
+          </Button>
+        }
+      />
     </main>
   );
 }

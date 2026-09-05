@@ -32,9 +32,12 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { CiWarning } from "react-icons/ci";
 import { Input } from "./ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 const SUBJECT_MAX = 200;
 const MAX_RECIPIENTS = 500;
@@ -101,6 +104,8 @@ export default function MailComposer({ recipients, handleRowSelection }) {
         .replace(/&nbsp;/g, " ")
         .trim();
     const subjectText = payloadData.subject.trim();
+    const subjectLength = payloadData.subject.length;
+    const subjectOverLimit = subjectLength > SUBJECT_MAX;
 
     const validationError = useMemo(() => {
         if (!recipients || recipients === 0) return "No recipients selected.";
@@ -133,17 +138,23 @@ export default function MailComposer({ recipients, handleRowSelection }) {
             </DialogTrigger>
             <DialogContent className="max-w-[95vw] overflow-x-hidden sm:max-w-[90vw] md:max-w-[80vw] lg:max-w-[75vw]">
                 <DialogHeader>
-                    <DialogTitle>Send Custom Mail</DialogTitle>
+                    <div className="flex items-center justify-between gap-3">
+                        <DialogTitle>Send Custom Mail</DialogTitle>
+                        <Badge variant={recipients ? "softInfo" : "softMuted"}>
+                            {recipients || 0} recipient
+                            {recipients === 1 ? "" : "s"}
+                        </Badge>
+                    </div>
                     <DialogDescription>
-                        Send customized mail to {recipients || 0} selected
-                        recipient{recipients === 1 ? "" : "s"}.
+                        Compose and send a customized email to the applicants you
+                        selected in the table.
                     </DialogDescription>
                 </DialogHeader>
 
                 {recipients !== 0 ? (
                     <div className="flex flex-col justify-between gap-3">
                         <div className="flex flex-col gap-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                                 <div className="flex flex-1 flex-col gap-1">
                                     <Label htmlFor="mail-subject">Subject</Label>
                                     <Input
@@ -151,6 +162,7 @@ export default function MailComposer({ recipients, handleRowSelection }) {
                                         value={payloadData.subject}
                                         maxLength={SUBJECT_MAX}
                                         placeholder="Subject"
+                                        aria-describedby="mail-subject-count"
                                         onChange={(e) =>
                                             setPayloadData((prev) => ({
                                                 ...prev,
@@ -158,8 +170,15 @@ export default function MailComposer({ recipients, handleRowSelection }) {
                                             }))
                                         }
                                     />
-                                    <span className="text-xs text-muted-foreground">
-                                        {subjectText.length}/{SUBJECT_MAX}
+                                    <span
+                                        id="mail-subject-count"
+                                        className={`text-xs ${
+                                            subjectOverLimit
+                                                ? "text-destructive"
+                                                : "text-muted-foreground"
+                                        }`}
+                                    >
+                                        {subjectLength}/{SUBJECT_MAX} characters
                                     </span>
                                 </div>
                                 <div className="flex flex-col gap-1">
@@ -205,70 +224,79 @@ export default function MailComposer({ recipients, handleRowSelection }) {
                                 </div>
                             </div>
 
-                            {editor && (
-                                <div
-                                    className="flex max-w-full flex-wrap gap-1 pb-3"
-                                    role="toolbar"
-                                    aria-label="Text formatting"
-                                >
-                                    {toolbarButtons().map((btn) => {
-                                        const active =
-                                            typeof btn.isActive === "string"
-                                                ? editor.isActive(btn.isActive)
-                                                : editor.isActive(
-                                                      btn.isActive.name,
-                                                      btn.isActive.opts
-                                                  );
-                                        return (
-                                            <Button
-                                                key={btn.label}
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                aria-pressed={active}
-                                                onClick={() =>
-                                                    btn.run(
-                                                        editor.chain().focus()
-                                                    ).run()
-                                                }
-                                                className={active ? "bg-accent" : ""}
-                                            >
-                                                {btn.label}
-                                            </Button>
-                                        );
-                                    })}
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                            editor.chain().focus().undo().run()
-                                        }
+                            <div className="flex flex-col gap-1">
+                                <Label>Message</Label>
+                                {editor && (
+                                    <div
+                                        className="flex max-w-full flex-wrap gap-1 pb-1"
+                                        role="toolbar"
+                                        aria-label="Text formatting"
                                     >
-                                        Undo
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                            editor.chain().focus().redo().run()
-                                        }
-                                    >
-                                        Redo
-                                    </Button>
-                                </div>
-                            )}
+                                        {toolbarButtons().map((btn) => {
+                                            const active =
+                                                typeof btn.isActive === "string"
+                                                    ? editor.isActive(btn.isActive)
+                                                    : editor.isActive(
+                                                          btn.isActive.name,
+                                                          btn.isActive.opts
+                                                      );
+                                            return (
+                                                <Button
+                                                    key={btn.label}
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    aria-pressed={active}
+                                                    onClick={() =>
+                                                        btn.run(
+                                                            editor.chain().focus()
+                                                        ).run()
+                                                    }
+                                                    className={active ? "bg-accent" : ""}
+                                                >
+                                                    {btn.label}
+                                                </Button>
+                                            );
+                                        })}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                                editor.chain().focus().undo().run()
+                                            }
+                                        >
+                                            Undo
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                                editor.chain().focus().redo().run()
+                                            }
+                                        >
+                                            Redo
+                                        </Button>
+                                    </div>
+                                )}
 
-                            <EditorContent editor={editor} />
+                                <EditorContent editor={editor} />
+                            </div>
 
                             {validationError && (
-                                <p className="flex items-center gap-2 text-sm text-destructive">
-                                    <CiWarning aria-hidden="true" />
-                                    {validationError}
-                                </p>
+                                <Alert variant="warning">
+                                    <AlertTitle>
+                                        This message isn&apos;t ready to send
+                                    </AlertTitle>
+                                    <AlertDescription>
+                                        {validationError}
+                                    </AlertDescription>
+                                </Alert>
                             )}
                         </div>
+
+                        <Separator />
 
                         <DialogFooter className="flex gap-3">
                             {!confirm ? (
@@ -294,15 +322,27 @@ export default function MailComposer({ recipients, handleRowSelection }) {
                                 type="submit"
                                 disabled={!canSend}
                                 onClick={onSend}
+                                className="gap-2"
                             >
-                                {sending ? "Sending…" : "Send Mail"}
+                                {sending ? (
+                                    <>
+                                        <Spinner size="sm" label="Sending" />
+                                        Sending…
+                                    </>
+                                ) : (
+                                    "Send Mail"
+                                )}
                             </Button>
                         </DialogFooter>
                     </div>
                 ) : (
-                    <p className="flex items-center justify-start gap-3 text-md font-light text-muted-foreground">
-                        <CiWarning aria-hidden="true" /> No recipients selected
-                    </p>
+                    <Alert variant="warning">
+                        <AlertTitle>No recipients selected</AlertTitle>
+                        <AlertDescription>
+                            Select one or more applicants from the table before
+                            composing an email.
+                        </AlertDescription>
+                    </Alert>
                 )}
             </DialogContent>
         </Dialog>

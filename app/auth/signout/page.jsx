@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Card,
   CardContent,
@@ -38,7 +39,7 @@ export default function SignOutPage() {
       id="main-content"
       className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground"
     >
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm animate-fade-up">
         <CardHeader>
           <CardTitle className="font-display">Sign out</CardTitle>
           <CardDescription>
@@ -46,8 +47,15 @@ export default function SignOutPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <Button onClick={handleSignOut} disabled={signingOut}>
-            {signingOut ? "Signing out..." : "Sign out"}
+          <Button onClick={handleSignOut} disabled={signingOut} aria-busy={signingOut}>
+            {signingOut ? (
+              <>
+                <Spinner size="sm" label="Signing out" className="mr-2" />
+                <span aria-hidden="true">Signing out…</span>
+              </>
+            ) : (
+              "Sign out"
+            )}
           </Button>
           <Button
             variant="outline"

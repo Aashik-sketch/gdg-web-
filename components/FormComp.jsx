@@ -16,11 +16,23 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "./ui/card";
+import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
+import { Progress } from "./ui/progress";
+import { Badge } from "./ui/badge";
+import { Spinner } from "./ui/spinner";
 import { QuestionnaireData } from "@/constants";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 import { useSubmissions } from "@/components/SubmissionsProvider";
+import { Check } from "lucide-react";
 
 // Neutral label used in place of the previous "Why do you want to join
 // Organization Name?" placeholder copy.
@@ -50,53 +62,61 @@ const renderDepartmentQuestions = (department, form) => {
   if (!questions.length) return null;
 
   return (
-    <fieldset className="mt-6 rounded-lg border border-border bg-card p-5">
-      <legend
-        className="px-1 font-display text-lg font-semibold text-foreground break-words"
-        title={department}
-      >
-        {department} Questions
-      </legend>
-      <div className="mt-2 grid grid-cols-1 gap-5 md:grid-cols-2">
-        {questions.map((question) => {
-          const isCompact = question.type === "short-text";
-          return (
-            <FormField
-              key={question.name}
-              control={form.control}
-              name={question.name}
-              render={({ field, fieldState }) => {
-                const errorId = `${field.name}-error`;
-                return (
-                  <FormItem className={isCompact ? "" : "md:col-span-2"}>
-                    <FormLabel className="break-words">{question.name}</FormLabel>
-                    <FormControl>
-                      {isCompact ? (
-                        <Input
-                          {...field}
-                          placeholder={question.placeholder || "Answer..."}
-                          aria-invalid={fieldState.error ? "true" : undefined}
-                          aria-describedby={fieldState.error ? errorId : undefined}
-                        />
-                      ) : (
-                        <Textarea
-                          {...field}
-                          rows={4}
-                          placeholder={question.placeholder || "2-3 sentences"}
-                          aria-invalid={fieldState.error ? "true" : undefined}
-                          aria-describedby={fieldState.error ? errorId : undefined}
-                        />
-                      )}
-                    </FormControl>
-                    <FormMessage id={errorId} />
-                  </FormItem>
-                );
-              }}
-            />
-          );
-        })}
-      </div>
-    </fieldset>
+    <Card className="animate-fade-up">
+      <CardHeader>
+        <CardTitle
+          className="break-words font-display text-lg"
+          title={department}
+        >
+          <span className="line-clamp-2">{department}</span>
+        </CardTitle>
+        <CardDescription>Questions specific to this department.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <fieldset>
+          <legend className="sr-only">{department} questions</legend>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {questions.map((question) => {
+              const isCompact = question.type === "short-text";
+              return (
+                <FormField
+                  key={question.name}
+                  control={form.control}
+                  name={question.name}
+                  render={({ field, fieldState }) => {
+                    const errorId = `${field.name}-error`;
+                    return (
+                      <FormItem className={isCompact ? "" : "md:col-span-2"}>
+                        <FormLabel className="break-words">{question.name}</FormLabel>
+                        <FormControl>
+                          {isCompact ? (
+                            <Input
+                              {...field}
+                              placeholder={question.placeholder || "Answer..."}
+                              aria-invalid={fieldState.error ? "true" : undefined}
+                              aria-describedby={fieldState.error ? errorId : undefined}
+                            />
+                          ) : (
+                            <Textarea
+                              {...field}
+                              rows={4}
+                              placeholder={question.placeholder || "2-3 sentences"}
+                              aria-invalid={fieldState.error ? "true" : undefined}
+                              aria-describedby={fieldState.error ? errorId : undefined}
+                            />
+                          )}
+                        </FormControl>
+                        <FormMessage id={errorId} />
+                      </FormItem>
+                    );
+                  }}
+                />
+              );
+            })}
+          </div>
+        </fieldset>
+      </CardContent>
+    </Card>
   );
 };
 
@@ -116,6 +136,7 @@ const FormComp = ({ dept1, dept2 }) => {
   const [submittedDepartments, setSubmittedDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isDraftReady, setIsDraftReady] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
 
   const departmentNames = useMemo(
     () =>
@@ -285,17 +306,17 @@ const FormComp = ({ dept1, dept2 }) => {
         draftKey,
         JSON.stringify({ values: watchedValues, submittedDepartments }),
       );
+      // Reflect the successful debounced write in the UI ("Saved automatically").
+      setDraftSaved(true);
     }, 500);
     return () => clearTimeout(handle);
   }, [draftKey, isDraftReady, submittedDepartments, watchedValues]);
 
   if (!isLoaded) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <span className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-primary" />
-          <p>Loading...</p>
-        </div>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Spinner size="lg" label="Loading application" />
+        <p>Loading…</p>
       </div>
     );
   }
@@ -303,17 +324,19 @@ const FormComp = ({ dept1, dept2 }) => {
   if (!isSignedIn) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
-          <p className="font-display text-2xl font-semibold text-foreground">
-            Sign In Required
-          </p>
-          <p className="mt-2 text-muted-foreground">
-            Please sign in to access the application form.
-          </p>
-          <Button className="mt-6" onClick={() => router.push("/auth/signin")}>
-            Sign In
-          </Button>
-        </div>
+        <Card className="max-w-md text-center">
+          <CardHeader>
+            <CardTitle className="font-display text-2xl">Sign In Required</CardTitle>
+            <CardDescription>
+              Please sign in to access the application form.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" onClick={() => router.push("/auth/signin")}>
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -429,54 +452,88 @@ const FormComp = ({ dept1, dept2 }) => {
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
-        <p>Checking your application status...</p>
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Spinner label="Checking application status" />
+        <p>Checking your application status…</p>
       </div>
     );
   }
 
+  // Required-field completion drives a small progress indicator so applicants
+  // can see the essential fields are done. These three are the only hard
+  // requirements in the schema (Name, RegistrationNumber, Phone).
+  const requiredFields = ["Name", "RegistrationNumber", "Phone"];
+  const filledRequired = requiredFields.filter(
+    (name) => (watchedValues?.[name] || "").toString().trim().length > 0,
+  ).length;
+
   return (
     <div className="mx-auto w-full max-w-3xl">
       {errorMessage && !isSubmitting && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="mb-6 rounded-lg border border-destructive/40 bg-destructive/10 p-4"
-        >
-          <p className="text-sm font-medium text-destructive">{errorMessage}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => router.push("/departments")}
-          >
-            Go Back
-          </Button>
-        </div>
+        <Alert variant="destructive" className="mb-6">
+          <div className="min-w-0 flex-1">
+            <AlertTitle>We couldn&apos;t submit your application</AlertTitle>
+            <AlertDescription className="break-words text-destructive/90">
+              {errorMessage}
+            </AlertDescription>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => router.push("/departments")}
+            >
+              Go Back
+            </Button>
+          </div>
+        </Alert>
       )}
 
-      <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
+      <header className="mb-6 animate-fade-up">
+        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Step 02 · Apply
+        </p>
+        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-foreground">
           Application Form
         </h1>
-        <p className="mt-2 text-muted-foreground break-words">
+        <p className="mt-2 break-words text-muted-foreground">
           Applying to:{" "}
           <strong className="text-foreground">{departmentNames.join(", ")}</strong>
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           Fields marked <span className="text-destructive">*</span> are required.
         </p>
+
+        <div className="mt-5 flex flex-col gap-2 sm:max-w-md">
+          <Progress
+            value={filledRequired}
+            max={requiredFields.length}
+            label="Required details completed"
+            tone={filledRequired === requiredFields.length ? "success" : "primary"}
+            showValue
+          />
+          {draftSaved && (
+            <Badge variant="softMuted" size="sm" className="w-fit">
+              <Check className="h-3 w-3" aria-hidden="true" />
+              Saved automatically
+            </Badge>
+          )}
+        </div>
       </header>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6" noValidate>
-          <fieldset className="rounded-lg border border-border bg-card p-5">
-            <legend className="px-1 font-display text-lg font-semibold text-foreground">
-              About You
-            </legend>
-
-            <div className="mt-2 grid grid-cols-1 gap-5 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-lg">About You</CardTitle>
+              <CardDescription>
+                These details are shared across every department you apply to.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <fieldset>
+                <legend className="sr-only">About you</legend>
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="Name"
@@ -600,14 +657,28 @@ const FormComp = ({ dept1, dept2 }) => {
                 )}
               />
             </div>
-          </fieldset>
+              </fieldset>
+            </CardContent>
+          </Card>
 
           {renderDepartmentQuestions(departmentNames[0], form)}
           {departmentNames[1] && renderDepartmentQuestions(departmentNames[1], form)}
 
           <div className="pt-2">
-            <Button type="submit" disabled={isSubmitting} aria-busy={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Submit Application"}
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              aria-busy={isSubmitting}
+              className="min-w-[12rem]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Spinner size="sm" label="Submitting" className="mr-2" />
+                  <span aria-hidden="true">Submitting…</span>
+                </>
+              ) : (
+                "Submit Application"
+              )}
             </Button>
           </div>
         </form>

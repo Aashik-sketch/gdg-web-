@@ -64,6 +64,20 @@ describe("NavBar", () => {
       screen.queryByRole("link", { name: /admin panel/i }),
     ).not.toBeInTheDocument();
   });
+
+  it("toggles the mobile menu with correct aria wiring", () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    render(<NavBar />);
+
+    const toggle = screen.getByRole("button", { name: /open menu/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("aria-controls", "mobile-nav");
+
+    fireEvent.click(toggle);
+
+    const closeToggle = screen.getByRole("button", { name: /close menu/i });
+    expect(closeToggle).toHaveAttribute("aria-expanded", "true");
+  });
 });
 
 describe("Footer", () => {

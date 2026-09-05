@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 import {
     Dialog,
@@ -11,8 +13,6 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-
-import { CiWarning } from "react-icons/ci";
 
 import CarouselComp from "./CarouselComp";
 import { toast } from "sonner";
@@ -69,6 +69,8 @@ export default function DialogComp({ selectedApplicants }) {
         }
     };
 
+    const count = applicants.length;
+
     return (
         <Dialog>
             <DialogTrigger asChild>
@@ -76,23 +78,32 @@ export default function DialogComp({ selectedApplicants }) {
             </DialogTrigger>
             <DialogContent className="max-w-[95vw] sm:max-w-[80vw] md:max-w-[70vw] lg:max-w-[60vw] h-fit">
                 <DialogHeader>
-                    <DialogTitle>Applicant&apos;s Responses</DialogTitle>
+                    <div className="flex items-center justify-between gap-3">
+                        <DialogTitle>Applicant&apos;s Responses</DialogTitle>
+                        <Badge variant={count ? "softInfo" : "softMuted"}>
+                            {count} selected
+                        </Badge>
+                    </div>
                     <DialogDescription>
-                        Questions and answers answered by the applicants can be
-                        viewed here.
+                        Questions and answers submitted by the selected applicants
+                        can be reviewed here.
                     </DialogDescription>
                 </DialogHeader>
                 <div>
-                    {applicants.length !== 0 ? (
+                    {count !== 0 ? (
                         <CarouselComp
                             dataList={applicants}
                             handleShortlist={handleShortlist}
                             shortlistStatus={shortlistStatus}
                         />
                     ) : (
-                        <p className="flex items-center justify-start gap-3 text-md font-light text-muted-foreground">
-                            <CiWarning aria-hidden="true" /> No applicant selected
-                        </p>
+                        <Alert variant="warning">
+                            <AlertTitle>No applicants selected</AlertTitle>
+                            <AlertDescription>
+                                Select one or more applicants from the table to
+                                view their questionnaire responses.
+                            </AlertDescription>
+                        </Alert>
                     )}
                 </div>
             </DialogContent>

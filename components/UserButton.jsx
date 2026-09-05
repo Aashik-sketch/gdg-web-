@@ -49,7 +49,7 @@ function UserButton({ user }) {
           className="rounded-full"
           aria-label={`Account menu for ${displayName}`}
         >
-          <Avatar className="h-9 w-9">
+          <Avatar className="h-9 w-9 border border-border">
             {user.image && <AvatarImage src={user.image} alt="" />}
             <AvatarFallback className="text-sm font-medium">
               {initials}

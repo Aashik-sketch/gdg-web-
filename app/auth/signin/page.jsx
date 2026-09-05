@@ -12,6 +12,9 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 import DWASFWLoader from "@/components/GDGLoader";
@@ -220,8 +223,8 @@ export default function SignInPage() {
                 minLength={MIN_PASSWORD_LENGTH}
                 required
               />
-              <p id="password-hint" className="text-xs text-muted-foreground">
-                Must be at least {MIN_PASSWORD_LENGTH} characters.
+              <p id="password-hint" className="sr-only">
+                Password must be at least {MIN_PASSWORD_LENGTH} characters.
               </p>
               {passwordError && (
                 <p
@@ -234,22 +237,38 @@ export default function SignInPage() {
               )}
             </div>
 
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting
-                ? "Processing..."
-                : mode === "signin"
-                  ? "Sign In"
-                  : "Create Account"}
+            {mode === "signup" && (
+              <Alert variant="info">
+                <AlertDescription className="text-foreground">
+                  Use at least{" "}
+                  <strong className="font-semibold">
+                    {MIN_PASSWORD_LENGTH} characters
+                  </strong>
+                  . A mix of letters, numbers, and symbols keeps your account
+                  safer.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <Button type="submit" className="w-full" disabled={submitting} aria-busy={submitting}>
+              {submitting ? (
+                <>
+                  <Spinner size="sm" label="Processing" className="mr-2" />
+                  <span aria-hidden="true">Processing…</span>
+                </>
+              ) : mode === "signin" ? (
+                "Sign In"
+              ) : (
+                "Create Account"
+              )}
             </Button>
           </form>
 
           <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">or</span>
-            </div>
+            <Separator />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs uppercase text-muted-foreground">
+              or
+            </span>
           </div>
 
           <Button

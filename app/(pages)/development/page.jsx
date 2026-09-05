@@ -1,8 +1,19 @@
 import React from "react";
 import Link from "next/link";
+import { Inbox } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import DeptHero from "@/components/DeptHero";
 import { reviews } from "@/constants";
+import { Breadcrumb } from "@/components/ui/breadcrumb";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/stat-card";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // The development landing page highlights a couple of departments. The IDs are
 // the single source of truth; the display name/description are looked up in
@@ -21,32 +32,64 @@ const page = () => {
   return (
     <main id="main-content" className="min-h-screen bg-background text-foreground">
       <NavBar />
+
+      <div className="mx-auto w-full max-w-5xl px-4 pt-6">
+        <Breadcrumb
+          items={[
+            { label: "Home", href: "/" },
+            { label: "Development" },
+          ]}
+        />
+      </div>
+
       <DeptHero dept={{ name: "Development Departments" }} />
 
       <div className="mx-auto w-full max-w-5xl px-4 pb-16">
-        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {features.map((feature) => (
-            <li key={feature.id}>
-              <div className="flex h-full flex-col rounded-lg border border-border bg-card p-6 shadow-sm transition-colors hover:border-primary/50">
-                <h2
-                  className="font-display text-lg font-semibold text-foreground break-words"
-                  title={feature.name}
-                >
-                  {feature.name}
-                </h2>
-                <p className="mt-2 flex-1 text-sm text-muted-foreground break-words">
-                  {feature.description}
-                </p>
+        {features.length > 0 ? (
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {features.map((feature) => (
+              <li key={feature.id}>
+                <Card className="flex h-full flex-col animate-fade-up transition-shadow hover:shadow-md">
+                  <CardHeader>
+                    <CardTitle
+                      className="break-words font-display text-lg"
+                      title={feature.name}
+                    >
+                      <span className="line-clamp-2">{feature.name}</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col">
+                    <p className="line-clamp-4 flex-1 break-words text-sm text-muted-foreground">
+                      {feature.description}
+                    </p>
+                    <Link
+                      href={`/join/${feature.id}`}
+                      className={cn(buttonVariants(), "mt-4 w-fit")}
+                    >
+                      Join
+                    </Link>
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Card>
+            <EmptyState
+              icon={<Inbox className="h-6 w-6" aria-hidden="true" />}
+              title="No featured departments"
+              description="There are no development departments to feature right now. Browse the full catalogue instead."
+              action={
                 <Link
-                  href={`/join/${feature.id}`}
-                  className="mt-4 inline-flex w-fit items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  href="/departments"
+                  className={cn(buttonVariants({ variant: "outline" }), "mt-1")}
                 >
-                  Join
+                  Browse all departments
                 </Link>
-              </div>
-            </li>
-          ))}
-        </ul>
+              }
+            />
+          </Card>
+        )}
       </div>
     </main>
   );

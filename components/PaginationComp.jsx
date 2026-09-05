@@ -8,6 +8,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { ButtonGroup } from "@/components/ui/button-group";
 
 import {
   HiOutlineChevronDoubleLeft,
@@ -32,33 +33,40 @@ const PaginationComp = ({
   dispPageNum = dispPageNum.filter((pg) => pg !== undefined);
 
   return (
-    <div className="flex items-center justify-between p-5 pt-0">
-      <div className="w-full p-3 text-sm text-muted-foreground">
-        Page {pages === 0 ? 0 : pageIndex + 1} of {pages}
-      </div>
-      <Pagination>
-        <PaginationContent className="cursor-pointer">
-          <PaginationItem
-            className={!canPrev ? "pointer-events-none opacity-50" : ""}
-          >
-            <button
-              type="button"
-              aria-label="Go to first page"
-              disabled={!canPrev}
-              onClick={() => goto(0)}
-              className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+      <p className="text-sm text-muted-foreground">
+        Page{" "}
+        <span className="font-medium text-foreground tabular-nums">
+          {pages === 0 ? 0 : pageIndex + 1}
+        </span>{" "}
+        of{" "}
+        <span className="font-medium text-foreground tabular-nums">{pages}</span>
+      </p>
+      <Pagination className="mx-0 w-auto justify-end">
+        <PaginationContent className="cursor-pointer gap-1">
+          <ButtonGroup aria-label="Pagination navigation" className="gap-0">
+            <PaginationItem
+              className={!canPrev ? "pointer-events-none opacity-50" : ""}
             >
-              <HiOutlineChevronDoubleLeft aria-hidden="true" />
-            </button>
-          </PaginationItem>
-          <PaginationItem
-            className={!canPrev ? "pointer-events-none opacity-50" : ""}
-          >
-            <PaginationPrevious
-              aria-label="Go to previous page"
-              onClick={() => previousPage()}
-            />
-          </PaginationItem>
+              <button
+                type="button"
+                aria-label="Go to first page"
+                disabled={!canPrev}
+                onClick={() => goto(0)}
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <HiOutlineChevronDoubleLeft aria-hidden="true" />
+              </button>
+            </PaginationItem>
+            <PaginationItem
+              className={!canPrev ? "pointer-events-none opacity-50" : ""}
+            >
+              <PaginationPrevious
+                aria-label="Go to previous page"
+                onClick={() => previousPage()}
+              />
+            </PaginationItem>
+          </ButtonGroup>
           {dispPageNum.map((num) => (
             <PaginationItem key={num}>
               <PaginationLink
@@ -70,27 +78,29 @@ const PaginationComp = ({
               </PaginationLink>
             </PaginationItem>
           ))}
-          <PaginationItem
-            className={!canNext ? "pointer-events-none opacity-50" : ""}
-          >
-            <PaginationNext
-              aria-label="Go to next page"
-              onClick={() => nextPage()}
-            />
-          </PaginationItem>
-          <PaginationItem
-            className={!canNext ? "pointer-events-none opacity-50" : ""}
-          >
-            <button
-              type="button"
-              aria-label="Go to last page"
-              disabled={!canNext}
-              onClick={() => goto(pageCount - 1)}
-              className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          <ButtonGroup aria-label="Pagination navigation forward" className="gap-0">
+            <PaginationItem
+              className={!canNext ? "pointer-events-none opacity-50" : ""}
             >
-              <HiOutlineChevronDoubleRight aria-hidden="true" />
-            </button>
-          </PaginationItem>
+              <PaginationNext
+                aria-label="Go to next page"
+                onClick={() => nextPage()}
+              />
+            </PaginationItem>
+            <PaginationItem
+              className={!canNext ? "pointer-events-none opacity-50" : ""}
+            >
+              <button
+                type="button"
+                aria-label="Go to last page"
+                disabled={!canNext}
+                onClick={() => goto(pageCount - 1)}
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <HiOutlineChevronDoubleRight aria-hidden="true" />
+              </button>
+            </PaginationItem>
+          </ButtonGroup>
         </PaginationContent>
       </Pagination>
     </div>

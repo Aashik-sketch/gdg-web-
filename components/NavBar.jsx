@@ -108,13 +108,18 @@ const NavBar = () => {
         </div>
       </nav>
 
-      {/* Mobile panel */}
+      {/* Mobile panel -- full-width offcanvas-style sheet with large tap
+          targets. No scroll/resize listeners; visibility is driven purely by
+          the toggle state. */}
       {mobileOpen && (
         <div
           id="mobile-nav"
-          className="border-t border-border bg-background md:hidden"
+          className="w-full border-t border-border bg-background md:hidden"
         >
-          <div className="container mx-auto flex flex-col gap-1 px-4 py-4">
+          <nav
+            aria-label="Mobile"
+            className="container mx-auto flex flex-col px-4 py-3"
+          >
             {navItems.map((item) => (
               <Link
                 key={item.href}
@@ -122,7 +127,7 @@ const NavBar = () => {
                 onClick={closeMobile}
                 aria-current={isActive(item.href) ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent",
+                  "flex min-h-[44px] items-center rounded-md px-3 text-base font-medium transition-colors hover:bg-accent",
                   isActive(item.href)
                     ? "text-foreground"
                     : "text-muted-foreground",
@@ -132,26 +137,26 @@ const NavBar = () => {
               </Link>
             ))}
 
-            <div className="mt-2 border-t border-border pt-3">
-              {isPending ? (
-                <span className="px-3 text-sm text-muted-foreground">
-                  Loading…
-                </span>
-              ) : !isAuthenticated ? (
-                <Link
-                  href="/auth/signin"
-                  onClick={closeMobile}
-                  className="block rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
-                >
-                  Sign In
-                </Link>
-              ) : (
-                <div className="px-3">
-                  <UserButton user={session.user} />
-                </div>
-              )}
-            </div>
-          </div>
+            <div className="my-2 border-t border-border" />
+
+            {isPending ? (
+              <span className="flex min-h-[44px] items-center px-3 text-base text-muted-foreground">
+                Loading…
+              </span>
+            ) : !isAuthenticated ? (
+              <Link
+                href="/auth/signin"
+                onClick={closeMobile}
+                className="flex min-h-[44px] items-center rounded-md px-3 text-base font-medium text-foreground hover:bg-accent"
+              >
+                Sign In
+              </Link>
+            ) : (
+              <div className="flex min-h-[44px] items-center px-3">
+                <UserButton user={session.user} />
+              </div>
+            )}
+          </nav>
         </div>
       )}
     </header>

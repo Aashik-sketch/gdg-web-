@@ -185,4 +185,76 @@ describe("DataTable", () => {
     });
     expect(toast.success).toHaveBeenCalled();
   });
+
+  it("shows a status badge for each applicant, not colour alone", () => {
+    render(<DataTable data={APPLICANTS} />);
+    // Two of the three fixtures are not reviewed, one is shortlisted.
+    expect(screen.getAllByText("Not reviewed")).toHaveLength(2);
+    expect(screen.getByText("Shortlisted")).toBeInTheDocument();
+  });
+
+  it("shows an empty state with a Clear filters action when nothing matches", async () => {
+    render(<DataTable data={APPLICANTS} />);
+
+    // Narrow to shortlisted=Yes then also search for a name that is not
+    // shortlisted, so the combined filters match nothing.
+    fireEvent.click(screen.getByText("short-yes"));
+    await waitFor(() => expect(dataRows()).toHaveLength(1));
+
+    fireEvent.change(screen.getByLabelText(/search applicants/i), {
+      target: { value: "Alice" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/no matching applicants/i)).toBeInTheDocument();
+    });
+
+    // The empty-state clear action restores every row.
+    fireEvent.click(
+      screen.getByRole("button", { name: /clear filters/i })
+    );
+
+    await waitFor(() => {
+      expect(dataRows()).toHaveLength(APPLICANTS.length);
+    });
+  });
+
+  it("disables the shortlist button while its request is in flight", async () => {
+    let resolveFetch;
+    global.fetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      })
+    );
+
+    render(<DataTable data={APPLICANTS} />);
+
+    // Alice starts not-shortlisted; the optimistic flip makes her label
+    // "Remove shortlist from" immediately after clicking.
+    const shortlistBtn = screen.getByRole("button", {
+      name: /^Shortlist Alice Ada$/i,
+    });
+    fireEvent.click(shortlistBtn);
+
+    await waitFor(() => {
+      const pending = screen.getByRole("button", {
+        name: /Remove shortlist from Alice Ada/i,
+      });
+      expect(pending).toBeDisabled();
+    });
+
+    resolveFetch({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true }),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", {
+          name: /Remove shortlist from Alice Ada/i,
+        })
+      ).not.toBeDisabled();
+    });
+  });
 });

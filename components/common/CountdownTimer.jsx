@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { APPLICATION_DEADLINE } from "@/lib/config";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * A single unit of the countdown. Hoisted out of the parent so it is not
@@ -13,13 +14,13 @@ const TimeUnit = ({ value, label }) => (
   <div className="flex flex-col items-center">
     <div
       aria-hidden="true"
-      className="font-display text-2xl font-bold tracking-wider text-foreground sm:text-3xl"
+      className="flex h-12 min-w-[3rem] items-center justify-center rounded-lg border border-border bg-muted/60 px-2 font-display text-2xl font-bold tabular-nums tracking-wider text-foreground sm:h-14 sm:min-w-[3.5rem] sm:text-3xl"
     >
       {value.toString().padStart(2, "0")}
     </div>
     <div
       aria-hidden="true"
-      className="text-[10px] uppercase tracking-wide text-muted-foreground"
+      className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
     >
       {label}
     </div>
@@ -29,7 +30,7 @@ const TimeUnit = ({ value, label }) => (
 const Separator = () => (
   <div
     aria-hidden="true"
-    className="flex items-center text-2xl font-bold text-muted-foreground"
+    className="flex h-12 items-center text-xl font-bold text-muted-foreground/50 sm:h-14"
   >
     :
   </div>
@@ -90,11 +91,13 @@ const CountdownTimer = ({ targetDate = APPLICATION_DEADLINE, className = "" }) =
     ? "Applications are closed."
     : `${timeLeft.days} days, ${timeLeft.hours} hours, ${timeLeft.minutes} minutes remaining.`;
 
+  // Under one day left (but not yet closed) warrants a visible urgency cue --
+  // conveyed with an icon-free text badge, not colour alone.
+  const isUrgent = !timeLeft.done && timeLeft.days === 0;
+
   return (
-    <div
-      className={`flex flex-col items-center justify-center ${className}`}
-    >
-      <div className="flex gap-3">
+    <div className={`flex flex-col items-center justify-center ${className}`}>
+      <div className="flex items-start gap-2 sm:gap-3">
         <TimeUnit value={timeLeft.days} label="Days" />
         <Separator />
         <TimeUnit value={timeLeft.hours} label="Hours" />
@@ -103,6 +106,13 @@ const CountdownTimer = ({ targetDate = APPLICATION_DEADLINE, className = "" }) =
         <Separator />
         <TimeUnit value={timeLeft.seconds} label="Seconds" />
       </div>
+
+      {isUrgent && (
+        <Badge variant="softWarning" size="sm" className="mt-3" dot>
+          Closing soon
+        </Badge>
+      )}
+
       {/* Polite, low-frequency announcement for screen readers instead of a
           per-second firehose. */}
       <span className="sr-only" aria-live="polite">

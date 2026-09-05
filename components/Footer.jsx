@@ -1,12 +1,12 @@
 import React from "react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * Static site footer.
  *
- * This is a plain (server) component: it holds no state and needs no effects,
- * so it ships zero client JavaScript. The copyright year is computed directly
- * at render time.
+ * A plain (server) component: no state, no effects, zero client JavaScript.
+ * The copyright year is computed directly at render time.
  */
 const FOOTER_LINKS = [
   { name: "Home", path: "/" },
@@ -20,24 +20,60 @@ export default function Footer() {
 
   return (
     <footer className="border-t border-border bg-background">
-      <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row">
-        <p className="text-sm text-muted-foreground">
-          &copy; {currentYear} {ORGANIZATION_LABEL}
-        </p>
-        <nav aria-label="Footer">
-          <ul className="flex items-center gap-6">
-            {FOOTER_LINKS.map((link) => (
-              <li key={link.path}>
-                <Link
-                  href={link.path}
-                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {link.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+      <div className="container mx-auto px-4 py-12">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Brand blurb */}
+          <div className="lg:col-span-2">
+            <p className="font-display text-lg font-semibold tracking-tight text-foreground">
+              {ORGANIZATION_LABEL}
+            </p>
+            <p className="mt-3 max-w-sm text-sm text-muted-foreground">
+              Apply to join a department, answer a short questionnaire, and
+              track your applications from review to result — all in one place.
+            </p>
+          </div>
+
+          {/* Navigation */}
+          <div>
+            <p className="text-sm font-semibold text-foreground">Navigate</p>
+            <nav aria-label="Footer" className="mt-4">
+              <ul className="space-y-3">
+                {FOOTER_LINKS.map((link) => (
+                  <li key={link.path}>
+                    <Link
+                      href={link.path}
+                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {link.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
+
+          {/* Recruitment window */}
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              Recruitment window
+            </p>
+            <div className="mt-4 space-y-3">
+              <Badge variant="softSuccess" dot>
+                Applications open
+              </Badge>
+              <p className="text-sm text-muted-foreground">
+                Applications are reviewed on a rolling basis during the open
+                recruitment window.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-10 border-t border-border pt-6">
+          <p className="text-sm text-muted-foreground">
+            &copy; {currentYear} {ORGANIZATION_LABEL}
+          </p>
+        </div>
       </div>
     </footer>
   );

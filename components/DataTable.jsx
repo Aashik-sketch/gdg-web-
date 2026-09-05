@@ -14,10 +14,14 @@ import FilterShortlisted from "./FilterShortlisted";
 import { FaSortAmountDownAlt, FaSortAmountUpAlt, FaSort } from "react-icons/fa";
 import { GrPowerReset } from "react-icons/gr";
 import { Button } from "./ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import { Toolbar, ButtonGroup } from "@/components/ui/button-group";
+import { EmptyState } from "@/components/ui/stat-card";
 import { CheckBoxComp } from "./CheckBoxComp";
 import { toast } from "sonner";
 import { curDate, curMonth, curYear, months } from "@/constants";
-import { IoCloudDownloadOutline } from "react-icons/io5";
+import { IoCloudDownloadOutline, IoSearchOutline } from "react-icons/io5";
 import {
   useTable,
   useSortBy,
@@ -79,6 +83,10 @@ const DataTable = ({ data }) => {
   const [departmentFilter, setDepartmentFilter] = useState(null); // string | null
   const [shortlistedFilter, setShortlistedFilter] = useState(null); // 'true' | 'false' | null
 
+  // Tracks the applicant id whose shortlist request is in flight so the button
+  // can show a spinner. A plain value (not a chained effect) keyed by id.
+  const [pendingId, setPendingId] = useState(null);
+
   // Single source of truth for the visible rows.
   const tableData = useMemo(() => {
     return rows.filter((row) => {
@@ -107,6 +115,7 @@ const DataTable = ({ data }) => {
           : applicant
       )
     );
+    setPendingId(id);
 
     try {
       const res = await fetch(`/api/shortlist/${id}`, {
@@ -144,6 +153,8 @@ const DataTable = ({ data }) => {
         )
       );
       toast.error("Failed to update status. Please try again.");
+    } finally {
+      setPendingId(null);
     }
   }, []);
 
@@ -157,32 +168,46 @@ const DataTable = ({ data }) => {
       { Header: "Department", accessor: "Department" },
       { Header: "Preference", accessor: "Pref" },
       {
-        Header: "Shortlisted",
+        Header: "Status",
         accessor: "shortlisted",
         Cell: ({ row }) => {
           const shortlisted = row.original.shortlisted;
           const name = row.original.Name || "applicant";
           const id = row.original._id ?? row.original.id;
+          const pending = pendingId === id;
           return (
-            <button
-              type="button"
-              aria-label={`${
-                shortlisted ? "Remove shortlist from" : "Shortlist"
-              } ${name}`}
-              onClick={() => handleShortlist(id, shortlisted)}
-              className={`inline-flex h-9 w-[120px] items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                shortlisted
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : "bg-success text-success-foreground hover:bg-success/90"
-              }`}
-            >
-              {shortlisted ? "Unshortlist" : "Shortlist"}
-            </button>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant={shortlisted ? "softSuccess" : "softMuted"}
+                dot
+              >
+                {shortlisted ? "Shortlisted" : "Not reviewed"}
+              </Badge>
+              <Button
+                type="button"
+                size="sm"
+                variant={shortlisted ? "outline" : "default"}
+                aria-label={`${
+                  shortlisted ? "Remove shortlist from" : "Shortlist"
+                } ${name}`}
+                disabled={pending}
+                onClick={() => handleShortlist(id, shortlisted)}
+                className="w-[130px] justify-center gap-2"
+              >
+                {pending ? (
+                  <Spinner size="sm" label="Updating" />
+                ) : shortlisted ? (
+                  "Unshortlist"
+                ) : (
+                  "Shortlist"
+                )}
+              </Button>
+            </div>
           );
         },
       },
     ],
-    [handleShortlist]
+    [handleShortlist, pendingId]
   );
 
   const {
@@ -341,18 +366,27 @@ const DataTable = ({ data }) => {
     shortlistedFilter !== null ||
     globalFilterState !== "";
 
+  const selectedCount = selectedFlatRows.length;
+
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-3">
+      <Toolbar>
         <div className="flex flex-1 flex-col gap-1 min-w-[220px]">
           <Label htmlFor="global-filter">Search applicants</Label>
-          <Input
-            id="global-filter"
-            value={globalFilterState}
-            onChange={(e) => handleGlobalFilterChange(e.target.value)}
-            placeholder="Search by name, email, department…"
-          />
+          <div className="relative">
+            <IoSearchOutline
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="global-filter"
+              value={globalFilterState}
+              onChange={(e) => handleGlobalFilterChange(e.target.value)}
+              placeholder="Search by name, email, department…"
+              className="pl-9"
+            />
+          </div>
         </div>
 
         <div className="flex flex-col gap-1">
@@ -378,20 +412,28 @@ const DataTable = ({ data }) => {
           </Select>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterDepartment
-            filterFunc={setDepartmentFilter}
-            value={departmentFilter}
-          />
-          <FilterShortlisted
-            filterFunc={setShortlistedFilter}
-            value={shortlistedFilter}
-          />
-          <DialogComp selectedApplicants={showRowData} />
-          <MailComposer
-            recipients={selectedFlatRows.length}
-            handleRowSelection={handleRowSelection}
-          />
+        <FilterDepartment
+          filterFunc={setDepartmentFilter}
+          value={departmentFilter}
+        />
+        <FilterShortlisted
+          filterFunc={setShortlistedFilter}
+          value={shortlistedFilter}
+        />
+
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+          {selectedCount > 0 && (
+            <Badge variant="softInfo" className="mr-1">
+              {selectedCount} selected
+            </Badge>
+          )}
+          <ButtonGroup aria-label="Applicant actions">
+            <DialogComp selectedApplicants={showRowData} />
+            <MailComposer
+              recipients={selectedCount}
+              handleRowSelection={handleRowSelection}
+            />
+          </ButtonGroup>
           <Button
             type="button"
             variant="outline"
@@ -414,23 +456,27 @@ const DataTable = ({ data }) => {
             </CSVLink>
           </Button>
         </div>
-      </div>
+      </Toolbar>
 
       {/* Table */}
       <div className="rounded-lg border border-border bg-card shadow-sm">
-        <div className="max-h-[70vh] overflow-auto rounded-lg">
+        <div className="max-h-[70vh] overflow-auto rounded-t-lg">
           <Table {...getTableProps()}>
             <TableCaption className="sr-only">
               Applicants list with sorting, filtering and shortlisting controls.
             </TableCaption>
-            <TableHeader className="sticky top-0 z-10 bg-card">
+            <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
               {headerGroups.map((hg) => {
                 // react-table provides a stable key; extract it and pass it
                 // explicitly (React 18 disallows a key inside a spread). This
                 // replaces the previous Math.random() keys that remounted rows.
                 const { key: hgKey, ...hgProps } = hg.getHeaderGroupProps();
                 return (
-                  <TableRow key={hgKey} {...hgProps}>
+                  <TableRow
+                    key={hgKey}
+                    {...hgProps}
+                    className="border-b border-border hover:bg-transparent"
+                  >
                     {hg.headers.map((header) => {
                       const sortable =
                         header.canSort && header.id !== "selection";
@@ -446,14 +492,14 @@ const DataTable = ({ data }) => {
                           key={headerKey}
                           scope="col"
                           aria-sort={sortable ? ariaSort : undefined}
-                          className="whitespace-nowrap"
+                          className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                           {...headerProps}
                         >
                           {sortable ? (
                             <button
                               type="button"
                               {...header.getSortByToggleProps()}
-                              className="inline-flex items-center gap-1 rounded font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="inline-flex items-center gap-1 rounded font-semibold uppercase tracking-wide transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               {header.render("Header")}
                               {header.isSorted ? (
@@ -481,14 +527,40 @@ const DataTable = ({ data }) => {
             </TableHeader>
             <TableBody {...getTableBodyProps()}>
               {page.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length + 1}
-                    className="py-12 text-center text-muted-foreground"
-                  >
-                    {hasActiveFilter
-                      ? "No applicants match the current filters."
-                      : "No applicants yet."}
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={columns.length + 1} className="p-0">
+                    <EmptyState
+                      icon={
+                        <IoSearchOutline
+                          className="h-5 w-5"
+                          aria-hidden="true"
+                        />
+                      }
+                      title={
+                        hasActiveFilter
+                          ? "No matching applicants"
+                          : "No applicants yet"
+                      }
+                      description={
+                        hasActiveFilter
+                          ? "No applicants match the current filters. Try broadening or clearing them."
+                          : "Applications will appear here once candidates submit."
+                      }
+                      action={
+                        hasActiveFilter ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={resetFilters}
+                            className="gap-2"
+                          >
+                            <GrPowerReset aria-hidden="true" />
+                            Clear filters
+                          </Button>
+                        ) : null
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -499,8 +571,13 @@ const DataTable = ({ data }) => {
                     <TableRow
                       key={rowKey}
                       {...rowProps}
-                      className={`transition-colors even:bg-muted/40 hover:bg-muted/60 ${
-                        row.original.shortlisted ? "bg-success/10" : ""
+                      data-shortlisted={
+                        row.original.shortlisted ? "true" : undefined
+                      }
+                      className={`transition-colors even:bg-muted/30 hover:bg-accent/60 ${
+                        row.original.shortlisted
+                          ? "bg-success/10 shadow-[inset_3px_0_0_0_hsl(var(--success))] hover:bg-success/20"
+                          : ""
                       }`}
                     >
                       {row.cells.map((cell) => {

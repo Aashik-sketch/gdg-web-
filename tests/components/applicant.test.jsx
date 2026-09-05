@@ -87,6 +87,29 @@ describe("CountdownTimer", () => {
 
     vi.useRealTimers();
   });
+
+  it("shows a 'Closing soon' badge when under 24 hours remain", () => {
+    const deadlineMs = new Date(APPLICATION_DEADLINE).getTime();
+    vi.useFakeTimers();
+    // 12 hours before the deadline -> days === 0 but not yet closed.
+    vi.setSystemTime(new Date(deadlineMs - 12 * 60 * 60 * 1000));
+
+    render(<CountdownTimer />);
+    expect(screen.getByText(/Closing soon/i)).toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
+  it("does not show the 'Closing soon' badge with more than a day left", () => {
+    const deadlineMs = new Date(APPLICATION_DEADLINE).getTime();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(deadlineMs - 3 * 24 * 60 * 60 * 1000));
+
+    render(<CountdownTimer />);
+    expect(screen.queryByText(/Closing soon/i)).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -154,5 +177,88 @@ describe("Departments page selection cap", () => {
       .getAllByRole("checkbox")
       .filter((cb) => cb.checked);
     expect(stillChecked.length).toBe(MAX_APPLICATIONS_PER_USER);
+  });
+
+  it("renders the guided-flow chrome: stepper, breadcrumb and progress", async () => {
+    sessionState.data = { user: { email: "candidate@example.com" } };
+
+    const { SubmissionsProvider } = await import("@/components/SubmissionsProvider");
+    const DepartmentsListPage = (
+      await import("@/app/(pages)/departments/page.jsx")
+    ).default;
+
+    render(
+      <SubmissionsProvider>
+        <DepartmentsListPage />
+      </SubmissionsProvider>,
+    );
+
+    // Stepper is exposed as a "Progress" nav; breadcrumb as a "Breadcrumb" nav.
+    expect(
+      screen.getByRole("navigation", { name: /progress/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: /breadcrumb/i }),
+    ).toBeInTheDocument();
+    // The first flow step is shown.
+    expect(screen.getByText("Select departments")).toBeInTheDocument();
+    // Progress primitive replaces the plain "N of 2 selected" text.
+    expect(screen.getAllByRole("progressbar").length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shared flow steps stay in sync across departments + join pages
+// ---------------------------------------------------------------------------
+
+describe("Applicant flow steps", () => {
+  it("defines the three flow steps once, frozen, in a shared module", async () => {
+    const { APPLICATION_STEPS, STEP_SELECT, STEP_APPLY, STEP_SUBMITTED } =
+      await import("@/constants/applicationSteps");
+
+    expect(APPLICATION_STEPS.map((s) => s.label)).toEqual([
+      "Select departments",
+      "Complete application",
+      "Submitted",
+    ]);
+
+    // Frozen at both levels so a consumer cannot mutate the shared array or
+    // any step object.
+    expect(Object.isFrozen(APPLICATION_STEPS)).toBe(true);
+    expect(APPLICATION_STEPS.every((s) => Object.isFrozen(s))).toBe(true);
+
+    expect([STEP_SELECT, STEP_APPLY, STEP_SUBMITTED]).toEqual([0, 1, 2]);
+  });
+
+  it("is imported by both flow surfaces rather than duplicated", async () => {
+    const fs = await import("node:fs");
+    const departments = fs.readFileSync(
+      "app/(pages)/departments/page.jsx",
+      "utf8",
+    );
+    // The join route is split: page.jsx is a server component that only
+    // validates params, and the interactive view renders the stepper.
+    const joinView = fs.readFileSync(
+      "app/(pages)/join/[...joinIds]/JoinApplicationView.jsx",
+      "utf8",
+    );
+
+    for (const source of [departments, joinView]) {
+      expect(source).toContain('from "@/constants/applicationSteps"');
+      // No local copy of the step definitions.
+      expect(source).not.toContain('label: "Select departments"');
+    }
+  });
+
+  it("validates join route params on the server so an unknown id 404s", async () => {
+    const fs = await import("node:fs");
+    const page = fs.readFileSync(
+      "app/(pages)/join/[...joinIds]/page.jsx",
+      "utf8",
+    );
+    // notFound() must be reached from a server component; a "use client" page
+    // renders the not-found UI but still responds with HTTP 200.
+    expect(page).not.toContain('"use client"');
+    expect(page).toContain("notFound()");
   });
 });
