@@ -7,6 +7,7 @@ import {
   isDeadlinePassed,
 } from "@/lib/config";
 import { formatZodError, submitFormSchema } from "@/lib/validation";
+import { DEPARTMENT_NAME_BY_ID } from "@/constants/departments";
 
 export const dynamic = "force-dynamic";
 
@@ -60,8 +61,13 @@ export async function POST(req) {
     );
   }
 
-  const { Department, Questions, ...formFields } = parsed.data;
+  const { DepartmentId, Questions, ...formFields } = parsed.data;
   const userEmail = user.email;
+
+  // The display name is derived on the server from the id, never taken from the
+  // request, so a rename in constants/departmentNames.js cannot be spoofed and
+  // stored records always carry the id that identifies the department.
+  const departmentName = DEPARTMENT_NAME_BY_ID[DepartmentId] ?? DepartmentId;
 
   try {
     const db = await connect();
@@ -70,9 +76,18 @@ export async function POST(req) {
     await db.runTransaction(async (tx) => {
       const existing = await tx.get(collection.where("Email", "==", userEmail));
 
-      if (existing.docs.some((doc) => doc.data()?.Department === Department)) {
+      // Duplicate detection matches on the stable id. Older records written
+      // before ids were stored are matched on the display name as a fallback.
+      const alreadyApplied = existing.docs.some((doc) => {
+        const data = doc.data() ?? {};
+        return data.DepartmentId
+          ? data.DepartmentId === DepartmentId
+          : data.Department === departmentName;
+      });
+
+      if (alreadyApplied) {
         throw new SubmissionError(
-          `You have already submitted an application for ${Department}`,
+          `You have already submitted an application for ${departmentName}`,
           409,
         );
       }
@@ -86,7 +101,8 @@ export async function POST(req) {
 
       tx.create(collection.doc(), {
         ...formFields,
-        Department,
+        DepartmentId,
+        Department: departmentName,
         Questions,
         Email: userEmail,
         shortlisted: false,

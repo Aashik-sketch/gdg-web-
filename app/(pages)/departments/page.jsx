@@ -6,7 +6,9 @@ import { Inbox } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { toast } from "sonner";
-import { reviews } from "@/constants";
+import { departments } from "@/constants/departments";
+import { authClient } from "@/lib/auth-client";
+import { signInHref } from "@/lib/redirect";
 import { MAX_APPLICATIONS_PER_USER } from "@/lib/config";
 import { useSubmissions } from "@/components/SubmissionsProvider";
 import CountdownTimer from "@/components/common/CountdownTimer";
@@ -21,10 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
-
-// The catalogue is a static import; there is no need to deep-clone it into
-// state via an effect. Use it directly.
-const departments = reviews;
 
 /**
  * A single selectable department card. Hoisted out of the page component so it
@@ -52,7 +50,7 @@ const DepartmentCard = ({ department, isSelected, isSubmitted, isAtCap, onToggle
             className="mt-1 h-4 w-4 shrink-0 rounded border-input accent-primary"
             disabled={disabled}
             checked={isSelected}
-            onChange={() => onToggle(department.name)}
+            onChange={() => onToggle(department.id)}
             aria-describedby={`${inputId}-desc`}
           />
           <div className="min-w-0 flex-1">
@@ -89,31 +87,48 @@ const DepartmentCard = ({ department, isSelected, isSubmitted, isAtCap, onToggle
 
 const DepartmentsListPage = () => {
   const router = useRouter();
-  const { submittedDepartments } = useSubmissions();
-  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const { data: session, isPending } = authClient.useSession();
+  const { submittedDepartmentIds, submittedDepartments, submittedCount: alreadySubmitted } =
+    useSubmissions();
+  // Selection is tracked by stable id, not display name, so renaming a
+  // department in constants/departmentNames.js cannot break it.
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  /**
+   * A department counts as submitted if its id matches, or -- for records
+   * written before ids were stored -- if its display name matches.
+   */
+  const isSubmittedDepartment = (department) =>
+    submittedDepartmentIds.includes(department.id) ||
+    submittedDepartments.includes(department.name);
 
   // Everything below is derived during render -- no mirrored useState/useEffect
   // chains that can fall out of sync.
   const remainingSlots = Math.max(
     0,
-    MAX_APPLICATIONS_PER_USER - submittedDepartments.length,
+    MAX_APPLICATIONS_PER_USER - alreadySubmitted,
   );
-  const selectedIds = departments
-    .filter((dept) => selectedDepartments.includes(dept.name))
-    .map((dept) => dept.id);
-  const selectedCount = selectedDepartments.length;
-  const submittedCount = Math.min(
-    submittedDepartments.length,
-    MAX_APPLICATIONS_PER_USER,
-  );
+  const selectedCount = selectedIds.length;
+  const submittedCount = Math.min(alreadySubmitted, MAX_APPLICATIONS_PER_USER);
   const isContinueDisabled = selectedIds.length === 0;
+  const needsSignIn = !isPending && !session?.user;
+  // Be explicit that signing in comes first, rather than letting the user click
+  // "Continue" and land on an unexpected sign-in screen.
+  const continueLabel = needsSignIn
+    ? "Sign in to continue"
+    : "Continue to application";
   const isAtCap = selectedCount >= remainingSlots;
   const noSlotsLeft = remainingSlots <= 0;
   const hasDepartments = departments.length > 0;
 
-  const toggleDepartment = (departmentName) => {
-    if (submittedDepartments.includes(departmentName)) {
-      toast.error(`You have already submitted an application for ${departmentName}.`);
+  const toggleDepartment = (departmentId) => {
+    const department = departments.find((d) => d.id === departmentId);
+    if (!department) return;
+
+    if (isSubmittedDepartment(department)) {
+      toast.error(
+        `You have already submitted an application for ${department.name}.`,
+      );
       return;
     }
 
@@ -124,22 +139,36 @@ const DepartmentsListPage = () => {
       return;
     }
 
-    setSelectedDepartments((current) => {
-      const isSelected = current.includes(departmentName);
-      if (isSelected) {
-        return current.filter((name) => name !== departmentName);
+    setSelectedIds((current) => {
+      if (current.includes(departmentId)) {
+        return current.filter((id) => id !== departmentId);
       }
       if (current.length >= remainingSlots) {
         toast.error(`You can select at most ${remainingSlots} department(s).`);
         return current;
       }
-      return [...current, departmentName];
+      return [...current, departmentId];
     });
   };
 
   const goToApplication = () => {
     if (!selectedIds.length) return;
-    router.push(`/join/${selectedIds.join("/")}`);
+
+    // Preserve catalogue order so the URL is stable regardless of click order.
+    const orderedIds = departments
+      .filter((d) => selectedIds.includes(d.id))
+      .map((d) => d.id);
+    const target = `/join/${orderedIds.join("/")}`;
+
+    // A signed-out user used to land on a dead-end "sign in" card and, after
+    // signing in, be dropped on the home page with the selection lost. Route
+    // through sign-in with the destination attached instead.
+    if (!isPending && !session?.user) {
+      router.push(signInHref(target));
+      return;
+    }
+
+    router.push(target);
   };
 
   return (
@@ -221,7 +250,7 @@ const DepartmentsListPage = () => {
           {/* Inline continue button for md+ where the sticky bar is hidden. */}
           <div className="mt-6 hidden md:block">
             <Button onClick={goToApplication} disabled={isContinueDisabled}>
-              Continue to application →
+              {continueLabel} →
             </Button>
           </div>
         </header>
@@ -240,8 +269,8 @@ const DepartmentsListPage = () => {
                 <DepartmentCard
                   key={department.id}
                   department={department}
-                  isSelected={selectedDepartments.includes(department.name)}
-                  isSubmitted={submittedDepartments.includes(department.name)}
+                  isSelected={selectedIds.includes(department.id)}
+                  isSubmitted={isSubmittedDepartment(department)}
                   isAtCap={isAtCap}
                   onToggle={toggleDepartment}
                 />
@@ -269,7 +298,7 @@ const DepartmentsListPage = () => {
             <span className="text-sm text-muted-foreground">selected</span>
           </div>
           <Button onClick={goToApplication} disabled={isContinueDisabled}>
-            Continue →
+            {needsSignIn ? "Sign in" : "Continue"} →
           </Button>
         </div>
       </div>

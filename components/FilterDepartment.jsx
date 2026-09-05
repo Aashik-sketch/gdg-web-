@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Check, ChevronsUpDown, X } from "lucide-react";
 
-import { reviews } from "@/constants";
+import { departments as departmentCatalogue } from "@/constants/departments";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,10 +23,14 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 
-const departments = [
-    ...reviews.map((r) => ({ value: r.name, label: r.name })),
-    { value: "Video Editing", label: "Video Editing" },
-];
+// Options come from the shared catalogue, so a rename in
+// constants/departmentNames.js is reflected in the admin filter too. A
+// hardcoded "Video Editing" entry used to be appended here; it is not in the
+// catalogue, so filtering by it could only ever return zero rows.
+const departmentOptions = departmentCatalogue.map((d) => ({
+    value: d.name,
+    label: d.name,
+}));
 
 export default function FilterDepartment({ filterFunc, value }) {
     const [open, setOpen] = React.useState(false);
@@ -73,7 +77,7 @@ export default function FilterDepartment({ filterFunc, value }) {
                             <CommandList>
                                 <CommandEmpty>No department found.</CommandEmpty>
                                 <CommandGroup>
-                                    {departments.map((dept) => (
+                                    {departmentOptions.map((dept) => (
                                         <CommandItem
                                             key={dept.value}
                                             value={dept.value}

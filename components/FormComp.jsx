@@ -27,7 +27,6 @@ import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
 import { Badge } from "./ui/badge";
 import { Spinner } from "./ui/spinner";
-import { QuestionnaireData } from "@/constants";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
@@ -47,17 +46,20 @@ const MOTIVATION_ALIASES = new Set([
   "Why do you want to join DWASFW?",
 ]);
 
-const normaliseQuestion = (question) =>
-  typeof question === "string"
-    ? { name: question, type: "generic", placeholder: "2-3 sentences" }
-    : question;
-
+/**
+ * Render one department's questionnaire.
+ *
+ * Questions arrive attached to the department object (resolved by stable id in
+ * constants/departments.js). They used to be looked up here by matching the
+ * display NAME against QuestionnaireData, which meant renaming a department
+ * silently removed all of its questions.
+ *
+ * @param {{id:string, name:string, questions:Array}} department
+ */
 const renderDepartmentQuestions = (department, form) => {
-  const questions = (
-    QuestionnaireData.find((qd) => qd.department === department)?.questions ?? []
-  )
-    .map(normaliseQuestion)
-    .filter((question) => !MOTIVATION_ALIASES.has(question.name));
+  const questions = (department?.questions ?? []).filter(
+    (question) => !MOTIVATION_ALIASES.has(question.name),
+  );
 
   if (!questions.length) return null;
 
@@ -66,15 +68,15 @@ const renderDepartmentQuestions = (department, form) => {
       <CardHeader>
         <CardTitle
           className="break-words font-display text-lg"
-          title={department}
+          title={department.name}
         >
-          <span className="line-clamp-2">{department}</span>
+          <span className="line-clamp-2">{department.name}</span>
         </CardTitle>
         <CardDescription>Questions specific to this department.</CardDescription>
       </CardHeader>
       <CardContent>
         <fieldset>
-          <legend className="sr-only">{department} questions</legend>
+          <legend className="sr-only">{department.name} questions</legend>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {questions.map((question) => {
               const isCompact = question.type === "short-text";
@@ -120,7 +122,7 @@ const renderDepartmentQuestions = (department, form) => {
   );
 };
 
-const FormComp = ({ dept1, dept2 }) => {
+const FormComp = ({ departments = [] }) => {
   const { data: session, isPending } = authClient.useSession();
 
   const user = session?.user;
@@ -131,47 +133,46 @@ const FormComp = ({ dept1, dept2 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const router = useRouter();
-  const { submittedDepartments: contextSubmitted, markDepartmentsSubmitted } =
-    useSubmissions();
+  const {
+    submittedDepartmentIds: contextSubmittedIds,
+    markDepartmentsSubmitted,
+  } = useSubmissions();
   const [submittedDepartments, setSubmittedDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isDraftReady, setIsDraftReady] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
 
+  const selectedDepartments = useMemo(
+    () => departments.filter(Boolean),
+    [departments],
+  );
+  const departmentIds = useMemo(
+    () => selectedDepartments.map((department) => department.id),
+    [selectedDepartments],
+  );
   const departmentNames = useMemo(
-    () =>
-      [dept1, dept2]
-        .filter(Boolean)
-        .map((department) =>
-          typeof department === "string" ? department : department.name,
-        ),
-    [dept1, dept2],
+    () => selectedDepartments.map((department) => department.name),
+    [selectedDepartments],
   );
 
+  // The draft key is derived from stable ids, so renaming a department does not
+  // orphan a saved draft.
   const draftKey =
-    user?.email && departmentNames.length
-      ? `recruitment-draft:${user.email}:${[...departmentNames].sort().join("|")}`
+    user?.email && departmentIds.length
+      ? `recruitment-draft:${user.email}:${[...departmentIds].sort().join("|")}`
       : null;
-
-  const normalizeDeptName = (str) =>
-    str ? str.trim().toLowerCase().replace(/\s*\/\s*/g, "/") : "";
 
   const questionData = useMemo(
     () => [
       ...new Set(
-        departmentNames.flatMap((department) =>
-          (
-            QuestionnaireData.find(
-              (item) => normalizeDeptName(item.department) === normalizeDeptName(department),
-            )?.questions ?? []
-          )
-            .map(normaliseQuestion)
+        selectedDepartments.flatMap((department) =>
+          (department.questions ?? [])
             .map((question) => question.name)
             .filter((name) => !MOTIVATION_ALIASES.has(name)),
         ),
       ),
     ],
-    [departmentNames],
+    [selectedDepartments],
   );
 
   const formSchema = useMemo(() => {
@@ -213,13 +214,11 @@ const FormComp = ({ dept1, dept2 }) => {
     },
   });
 
-  // Load any saved draft and the user's already-submitted departments. This is
-  // the single place that fetches /api/check-applications on mount.
+  // Load any saved draft and reconcile it with the already-submitted
+  // departments reported by SubmissionsProvider. No network call happens here.
   useEffect(() => {
     if (!isLoaded || !user || !draftKey) return;
 
-    const email = user.email;
-    let isActive = true;
     setIsDraftReady(false);
 
     try {
@@ -229,70 +228,48 @@ const FormComp = ({ dept1, dept2 }) => {
       // Ignore malformed drafts.
     }
 
-    async function initialiseForm() {
-      const savedDraft = JSON.parse(localStorage.getItem(draftKey) || "{}");
-      let remoteSubmitted = contextSubmitted || [];
-
-      if (!remoteSubmitted.length) {
-        const cacheKey = `submitted_depts_${email}`;
-        const cached =
-          typeof window !== "undefined" ? sessionStorage.getItem(cacheKey) : null;
-
-        if (cached) {
-          try {
-            remoteSubmitted = JSON.parse(cached);
-          } catch {
-            // Ignore malformed cache.
-          }
-        } else {
-          try {
-            // Email is derived from the session server-side; no query param.
-            const response = await fetch("/api/check-applications");
-            const result = await response.json();
-            if (result?.submittedDepartments) {
-              remoteSubmitted = result.submittedDepartments;
-              if (typeof window !== "undefined") {
-                sessionStorage.setItem(cacheKey, JSON.stringify(remoteSubmitted));
-              }
-            }
-          } catch (err) {
-            console.error("Failed to check applications:", err);
-          }
-        }
+    // SubmissionsProvider is the single source of truth for what has already
+    // been submitted (it fetches /api/check-applications and caches it). This
+    // component used to repeat that fetch and maintain a second sessionStorage
+    // cache under a different key, so the two could disagree.
+    const savedDraftIds = (() => {
+      try {
+        const draft = JSON.parse(localStorage.getItem(draftKey) || "{}");
+        return Array.isArray(draft.submittedDepartments)
+          ? draft.submittedDepartments
+          : [];
+      } catch {
+        return [];
       }
+    })();
 
-      if (!isActive) return;
-      const completed = [
-        ...new Set([...(savedDraft.submittedDepartments || []), ...remoteSubmitted]),
-      ];
-      setSubmittedDepartments(completed);
-      if (
-        departmentNames.length > 0 &&
-        departmentNames.every((dept) => completed.includes(dept))
-      ) {
-        setErrorMessage(
-          `You have already submitted an application for ${departmentNames.join(" and ")}.`,
-        );
-      }
-      localStorage.setItem(
-        draftKey,
-        JSON.stringify({ values: form.getValues(), submittedDepartments: completed }),
+    const completed = [...new Set([...savedDraftIds, ...contextSubmittedIds])];
+    setSubmittedDepartments(completed);
+
+    if (
+      departmentIds.length > 0 &&
+      departmentIds.every((id) => completed.includes(id))
+    ) {
+      setErrorMessage(
+        `You have already submitted an application for ${departmentNames.join(" and ")}.`,
       );
-      setLoading(false);
-      setIsDraftReady(true);
     }
 
-    initialiseForm().catch(() => {
-      if (isActive) {
-        setLoading(false);
-        setIsDraftReady(true);
-      }
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [contextSubmitted, departmentNames, draftKey, form, isLoaded, user]);
+    localStorage.setItem(
+      draftKey,
+      JSON.stringify({ values: form.getValues(), submittedDepartments: completed }),
+    );
+    setLoading(false);
+    setIsDraftReady(true);
+  }, [
+    contextSubmittedIds,
+    departmentIds,
+    departmentNames,
+    draftKey,
+    form,
+    isLoaded,
+    user,
+  ]);
 
   const watchedValues = useWatch({ control: form.control });
 
@@ -345,8 +322,10 @@ const FormComp = ({ dept1, dept2 }) => {
     setIsSubmitting(true);
     setErrorMessage("");
 
-    const pendingDepartments = departmentNames.filter(
-      (department) => !submittedDepartments.includes(department),
+    // Pending work is tracked by id, so a rename cannot make an already
+    // submitted department look outstanding.
+    const pendingDepartments = selectedDepartments.filter(
+      (department) => !submittedDepartments.includes(department.id),
     );
 
     if (!pendingDepartments.length) {
@@ -367,9 +346,7 @@ const FormComp = ({ dept1, dept2 }) => {
     };
 
     const submitDepartment = async (department) => {
-      const questions = (
-        QuestionnaireData.find((item) => item.department === department)?.questions ?? []
-      ).map(normaliseQuestion);
+      const questions = department.questions ?? [];
 
       const answers = questions.reduce(
         (acc, question) => ({
@@ -386,7 +363,9 @@ const FormComp = ({ dept1, dept2 }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...basicDetails,
-          Department: department,
+          // The id is authoritative; the server derives the display name from
+          // it and rejects a client-supplied name.
+          DepartmentId: department.id,
           Questions: answers,
         }),
       });
@@ -394,7 +373,7 @@ const FormComp = ({ dept1, dept2 }) => {
       // 201 on success. 400/403/409 carry a server `message` we surface as-is.
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || `Could not submit ${department}.`);
+        throw new Error(error.message || `Could not submit ${department.name}.`);
       }
       return { department, success: true };
     };
@@ -408,27 +387,31 @@ const FormComp = ({ dept1, dept2 }) => {
         .map((result) => result.value.department);
       const failures = results.flatMap((result, index) =>
         result.status === "rejected"
-          ? [{ department: pendingDepartments[index], message: result.reason?.message }]
+          ? [
+              {
+                department: pendingDepartments[index].name,
+                message: result.reason?.message,
+              },
+            ]
           : [],
       );
-      const completed = [...new Set([...submittedDepartments, ...successful])];
+      const completed = [
+        ...new Set([...submittedDepartments, ...successful.map((d) => d.id)]),
+      ];
 
       setSubmittedDepartments(completed);
-      markDepartmentsSubmitted(completed);
+      markDepartmentsSubmitted({
+        ids: successful.map((d) => d.id),
+        names: successful.map((d) => d.name),
+      });
       if (draftKey) {
         localStorage.setItem(
           draftKey,
           JSON.stringify({ values, submittedDepartments: completed }),
         );
       }
-      if (typeof window !== "undefined" && user?.email) {
-        sessionStorage.setItem(
-          `submitted_depts_${user.email}`,
-          JSON.stringify(completed),
-        );
-      }
       successful.forEach((department) =>
-        toast.success(`Application submitted for ${department}.`),
+        toast.success(`Application submitted for ${department.name}.`),
       );
 
       if (failures.length) {
@@ -661,8 +644,11 @@ const FormComp = ({ dept1, dept2 }) => {
             </CardContent>
           </Card>
 
-          {renderDepartmentQuestions(departmentNames[0], form)}
-          {departmentNames[1] && renderDepartmentQuestions(departmentNames[1], form)}
+          {selectedDepartments.map((department) => (
+            <React.Fragment key={department.id}>
+              {renderDepartmentQuestions(department, form)}
+            </React.Fragment>
+          ))}
 
           <div className="pt-2">
             <Button

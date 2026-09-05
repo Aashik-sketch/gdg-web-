@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reviews } from "@/constants";
+import { departments } from "@/constants/departments";
 import {
   escapeHtml,
   formatZodError,
@@ -8,13 +8,13 @@ import {
   submitFormSchema,
 } from "@/lib/validation";
 
-const knownDepartment = reviews[0].name;
+const knownDepartmentId = departments[0].id;
 
 const validBody = {
   Name: "Jane Doe",
   RegistrationNumber: "25BCE5612",
   Phone: "9876543210",
-  Department: knownDepartment,
+  DepartmentId: knownDepartmentId,
   Questions: { "Why do you want to join?": "Because I like building things." },
 };
 
@@ -37,12 +37,21 @@ describe("submitFormSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects a department that is not in the catalogue", () => {
+  it("rejects a department id that is not in the catalogue", () => {
     const result = submitFormSchema.safeParse({
       ...validBody,
-      Department: "Ministry of Silly Walks",
+      DepartmentId: "not-a-real-id",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("ignores a client-supplied Department name so it cannot be spoofed", () => {
+    const result = submitFormSchema.safeParse({
+      ...validBody,
+      Department: "Totally Different Department",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).not.toHaveProperty("Department");
   });
 
   it("rejects an unbounded answer", () => {

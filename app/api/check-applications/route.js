@@ -22,16 +22,22 @@ export async function GET() {
     const snapshot = await db
       .collection(APPLICATIONS_COLLECTION)
       .where("Email", "==", user.email)
-      .select("Department")
+      .select("Department", "DepartmentId")
       .get();
 
-    const submittedDepartments = snapshot.docs
-      .map((doc) => doc.data().Department)
+    const docs = snapshot.docs.map((doc) => doc.data() ?? {});
+
+    // Ids are authoritative. Names are returned too, for older records written
+    // before ids were stored and for display.
+    const submittedDepartmentIds = docs
+      .map((data) => data.DepartmentId)
       .filter(Boolean);
+    const submittedDepartments = docs.map((data) => data.Department).filter(Boolean);
 
     return NextResponse.json(
       {
         count: snapshot.size,
+        submittedDepartmentIds,
         submittedDepartments,
         remaining: Math.max(0, MAX_APPLICATIONS_PER_USER - snapshot.size),
       },

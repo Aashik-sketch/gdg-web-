@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Inbox } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import DeptHero from "@/components/DeptHero";
-import { reviews } from "@/constants";
+import { getDepartmentById } from "@/constants/departments";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import {
   Card,
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 // The development landing page highlights a couple of departments. The IDs are
 // the single source of truth; the display name/description are looked up in
-// `reviews` so this page can never drift from the catalogue, and any ID that is
+// the shared catalogue so this page can never drift from it, and any ID that is
 // no longer present is simply omitted rather than rendered as a dead link.
 const FEATURED_DEPARTMENT_IDS = [
   "3936d5a2-acd9-4a98-ac97-42c2c92f5c02",
@@ -25,7 +25,7 @@ const FEATURED_DEPARTMENT_IDS = [
 ];
 
 const features = FEATURED_DEPARTMENT_IDS.map((id) =>
-  reviews.find((review) => review.id === id),
+  getDepartmentById(id),
 ).filter(Boolean);
 
 const page = () => {

@@ -1,17 +1,19 @@
 import React from "react";
 import { notFound } from "next/navigation";
-import { reviews } from "@/constants/index";
+import { getDepartmentById } from "@/constants/departments";
 import JoinApplicationView from "./JoinApplicationView";
 
 /**
  * Application route.
  *
- * This is a SERVER component that does nothing but validate the route segments.
- * Validation only needs `params` and the static department catalogue, both of
- * which are available on the server -- so calling `notFound()` here produces a
- * real HTTP 404. When the whole page was a client component, `notFound()`
- * rendered the not-found UI but the response still went out as 200, because the
- * shell had already been committed.
+ * This is a SERVER component that does nothing but validate the route segments,
+ * so validation happens before any interactive code runs and the client never
+ * has to decide whether a URL is legitimate.
+ *
+ * Note on status codes: `notFound()` renders the correct not-found UI, but the
+ * response still goes out as 200 because the root layout contains client
+ * components and Next streams the shell before this component throws. The
+ * subtree is marked noindex in layout.jsx to address that.
  *
  * Everything interactive (session, form state) lives in JoinApplicationView.
  */
@@ -21,17 +23,18 @@ export default function JoinDepartmentPage({ params }) {
   // Every route id MUST correspond to a real department. The old
   // `|| id.startsWith("clerk_")` escape hatch -- a leftover from a previous
   // auth provider -- let any id beginning with "clerk_" through, and is gone.
-  const departments = ids.map((id) => reviews.find((dept) => dept.id === id));
+  const departments = ids.map((id) => getDepartmentById(id));
 
   if (ids.length === 0 || !departments.every(Boolean)) {
     notFound();
   }
 
-  // Only the fields the client actually needs are passed across the boundary,
-  // rather than whole catalogue entries.
+  // Only serialisable fields cross the boundary. `icon` is a React component
+  // reference from the catalogue and must not be passed to a client component.
   const serialisableDepartments = departments.map((dept) => ({
     id: dept.id,
     name: dept.name,
+    questions: dept.questions,
   }));
 
   return <JoinApplicationView departments={serialisableDepartments} />;

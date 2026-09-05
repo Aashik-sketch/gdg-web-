@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 import NavBar from "@/components/NavBar";
 import FormComp from "@/components/FormComp";
@@ -13,6 +13,7 @@ import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { APPLICATION_STEPS, STEP_APPLY } from "@/constants/applicationSteps";
+import { signInHref } from "@/lib/redirect";
 
 /**
  * Interactive half of the application route.
@@ -23,6 +24,7 @@ import { APPLICATION_STEPS, STEP_APPLY } from "@/constants/applicationSteps";
  */
 export default function JoinApplicationView({ departments = [] }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, isPending } = authClient.useSession();
 
   if (isPending) {
@@ -67,7 +69,7 @@ export default function JoinApplicationView({ departments = [] }) {
         </div>
 
         {isSignedIn ? (
-          <FormComp dept1={departments[0]} dept2={departments[1]} />
+          <FormComp departments={departments} />
         ) : (
           <Card className="mx-auto max-w-md animate-fade-up text-center">
             <CardHeader>
@@ -82,7 +84,7 @@ export default function JoinApplicationView({ departments = [] }) {
               </p>
               <Button
                 className="w-full"
-                onClick={() => router.push("/auth/signin")}
+                onClick={() => router.push(signInHref(pathname))}
               >
                 Sign in
               </Button>
