@@ -22,24 +22,20 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 
-let frameworks = [];
+const departments = [
+    ...reviews.map((r) => ({ value: r.name, label: r.name })),
+    { value: "Video Editing", label: "Video Editing" },
+];
 
-reviews.forEach(
-    (r, index) =>
-        (frameworks[index] = {
-            value: r.name,
-            label: r.name,
-        })
-);
-
-frameworks.push({
-    value: "Video Editing",
-    label: "Video Editing",
-});
-
-export default function FilterDepartment({ filterFunc }) {
+export default function FilterDepartment({ filterFunc, value }) {
     const [open, setOpen] = React.useState(false);
-    const [value, setValue] = React.useState("");
+    const selected = value ?? null;
+
+    const handleSelect = (nextValue) => {
+        const next = nextValue === selected ? null : nextValue;
+        setOpen(false);
+        filterFunc(next);
+    };
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -48,17 +44,20 @@ export default function FilterDepartment({ filterFunc }) {
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
+                    aria-label={
+                        selected
+                            ? `Filter by department: ${selected}`
+                            : "Filter by department"
+                    }
                     className="w-[200px] justify-between"
                 >
-                    {value ? (
-                        frameworks.find(
-                            (framework) => framework.value === value
-                        )?.label
+                    {selected ? (
+                        <span className="truncate">{selected}</span>
                     ) : (
-                        <div className="flex gap-3 items-center justify-center">
-                            <IoFilter />
+                        <span className="flex items-center gap-2">
+                            <IoFilter aria-hidden="true" />
                             Department
-                        </div>
+                        </span>
                     )}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -69,29 +68,21 @@ export default function FilterDepartment({ filterFunc }) {
                     <CommandList>
                         <CommandEmpty>No department found.</CommandEmpty>
                         <CommandGroup>
-                            {frameworks.map((framework) => (
+                            {departments.map((dept) => (
                                 <CommandItem
-                                    key={framework.value}
-                                    value={framework.value}
-                                    onSelect={(currentValue) => {
-                                        setValue(
-                                            currentValue === value
-                                                ? ""
-                                                : currentValue
-                                        );
-                                        setOpen(false);
-                                        filterFunc(currentValue);
-                                    }}
+                                    key={dept.value}
+                                    value={dept.value}
+                                    onSelect={() => handleSelect(dept.value)}
                                 >
                                     <Check
                                         className={cn(
                                             "mr-2 h-4 w-4",
-                                            value === framework.value
+                                            selected === dept.value
                                                 ? "opacity-100"
                                                 : "opacity-0"
                                         )}
                                     />
-                                    {framework.label}
+                                    {dept.label}
                                 </CommandItem>
                             ))}
                         </CommandGroup>

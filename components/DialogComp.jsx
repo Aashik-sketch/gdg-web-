@@ -7,7 +7,6 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -19,37 +18,54 @@ import CarouselComp from "./CarouselComp";
 import { toast } from "sonner";
 
 export default function DialogComp({ selectedApplicants }) {
+    const applicants = selectedApplicants();
     const [shortlistStatus, setShortlistStatus] = useState([]);
 
-    // Initialize the shortlist status when the component loads
+    // Re-seed the local shortlist status whenever the selected set changes.
+    // Depend on the derived list (via a stable signature), not on the function
+    // identity, which changes every render and previously caused a re-run loop.
+    const selectionSignature = applicants
+        .map((a) => `${a._id ?? a.id}:${a.shortlisted ? 1 : 0}`)
+        .join("|");
+
     useEffect(() => {
-        const status = selectedApplicants().map(applicant => applicant.shortlisted);
-        setShortlistStatus(status);
-    }, [selectedApplicants]);
+        setShortlistStatus(applicants.map((applicant) => applicant.shortlisted));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectionSignature]);
 
     const handleShortlist = async (index) => {
-        const applicant = selectedApplicants()[index];
+        const applicant = applicants[index];
         const isShortlisted = shortlistStatus[index];
+        const targetId = applicant._id ?? applicant.id;
 
         try {
-            const res = await fetch(`/api/shortlist/${applicant._id}`, {
+            const res = await fetch(`/api/shortlist/${targetId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ shortlisted: !isShortlisted }),
             });
 
+            let body = null;
+            try {
+                body = await res.json();
+            } catch {
+                body = null;
+            }
+
             if (res.ok) {
                 const updatedStatus = [...shortlistStatus];
                 updatedStatus[index] = !isShortlisted;
                 setShortlistStatus(updatedStatus);
-                toast.success(`Applicant has been ${!isShortlisted ? 'shortlisted' : 'unshortlisted'}!`);
+                toast.success(
+                    `Applicant has been ${
+                        !isShortlisted ? "shortlisted" : "unshortlisted"
+                    }!`
+                );
             } else {
-                console.error("Failed to update applicant status.");
-                throw new Error("Failed to update");
+                toast.error(body?.message || "Failed to update status");
             }
         } catch (error) {
-            console.error("Error occurred while updating the status:", error.message);
-            toast.error("Failed to update status");
+            toast.error("Failed to update status. Please try again.");
         }
     };
 
@@ -62,19 +78,20 @@ export default function DialogComp({ selectedApplicants }) {
                 <DialogHeader>
                     <DialogTitle>Applicant&apos;s Responses</DialogTitle>
                     <DialogDescription>
-                        Questions and answers answered by the applicants can be viewed here.
+                        Questions and answers answered by the applicants can be
+                        viewed here.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="">
-                    {selectedApplicants().length !== 0 ? (
-                        <CarouselComp    
-                            dataList={selectedApplicants()} 
-                            handleShortlist={handleShortlist} 
+                <div>
+                    {applicants.length !== 0 ? (
+                        <CarouselComp
+                            dataList={applicants}
+                            handleShortlist={handleShortlist}
                             shortlistStatus={shortlistStatus}
                         />
                     ) : (
-                        <p className="flex gap-3 items-center justify-start font-light text-md text-red-500">
-                            <CiWarning /> No applicant selected
+                        <p className="flex items-center justify-start gap-3 text-md font-light text-muted-foreground">
+                            <CiWarning aria-hidden="true" /> No applicant selected
                         </p>
                     )}
                 </div>

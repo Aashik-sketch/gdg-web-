@@ -20,20 +20,21 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 
-let frameworks = [
-    {
-        value: "true",
-        label: "Yes",
-    },
-    {
-        value: "false",
-        label: "No",
-    },
+const options = [
+    { value: "true", label: "Yes" },
+    { value: "false", label: "No" },
 ];
 
-export default function FilterShortlisted({ filterFunc }) {
+export default function FilterShortlisted({ filterFunc, value }) {
     const [open, setOpen] = React.useState(false);
-    const [value, setValue] = React.useState("");
+    const selected = value ?? null;
+    const selectedLabel = options.find((o) => o.value === selected)?.label;
+
+    const handleSelect = (nextValue) => {
+        const next = nextValue === selected ? null : nextValue;
+        setOpen(false);
+        filterFunc(next);
+    };
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -42,17 +43,20 @@ export default function FilterShortlisted({ filterFunc }) {
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
+                    aria-label={
+                        selectedLabel
+                            ? `Filter by shortlisted: ${selectedLabel}`
+                            : "Filter by shortlisted status"
+                    }
                     className="w-[200px] justify-between"
                 >
-                    {value ? (
-                        frameworks.find(
-                            (framework) => framework.value === value
-                        )?.label
+                    {selectedLabel ? (
+                        <span className="truncate">Shortlisted: {selectedLabel}</span>
                     ) : (
-                        <div className="flex gap-3 items-center justify-center">
-                            <IoFilter />
+                        <span className="flex items-center gap-2">
+                            <IoFilter aria-hidden="true" />
                             Shortlisted
-                        </div>
+                        </span>
                     )}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -63,29 +67,21 @@ export default function FilterShortlisted({ filterFunc }) {
                     <CommandList>
                         <CommandEmpty>No value found.</CommandEmpty>
                         <CommandGroup>
-                            {frameworks.map((framework) => (
+                            {options.map((option) => (
                                 <CommandItem
-                                    key={framework.value}
-                                    value={framework.value}
-                                    onSelect={(currentValue) => {
-                                        setValue(
-                                            currentValue === value
-                                                ? ""
-                                                : currentValue
-                                        );
-                                        setOpen(false);
-                                        filterFunc(currentValue);
-                                    }}
+                                    key={option.value}
+                                    value={option.value}
+                                    onSelect={() => handleSelect(option.value)}
                                 >
                                     <Check
                                         className={cn(
                                             "mr-2 h-4 w-4",
-                                            value === framework.value
+                                            selected === option.value
                                                 ? "opacity-100"
                                                 : "opacity-0"
                                         )}
                                     />
-                                    {framework.label}
+                                    {option.label}
                                 </CommandItem>
                             ))}
                         </CommandGroup>

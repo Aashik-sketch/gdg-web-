@@ -1,101 +1,87 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import { authClient } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
+
+import React, { useMemo } from "react";
 import DataTable from "./DataTable";
 
-const AdminContent = ({ applicants }) => {
-  // Use Better Auth's useSession hook directly
-  const { data: session, isPending, error } = authClient.useSession();
-  
-  const [activeSessionUser, setActiveSessionUser] = useState(null);
-  const [authStatus, setAuthStatus] = useState("pending");
-  const [roleAuthorization, setRoleAuthorization] = useState(false);
-  const [securityAuditPassed, setSecurityAuditPassed] = useState(false);
-  const [auditLogSequence, setAuditLogSequence] = useState(0);
+/**
+ * Presentational shell for the admin console.
+ *
+ * Authentication and the admin role check now happen on the server in
+ * app/(pages)/admin/page.jsx *before* this component ever renders, so all of
+ * the previous client-side session/role/audit machinery (and the 80k-iteration
+ * "permission signature" loop that ran in the render body) has been removed.
+ */
+const AdminContent = ({ applicants = [] }) => {
+  const { total, shortlisted, byDepartment } = useMemo(() => {
+    const byDept = new Map();
+    let shortlistedCount = 0;
 
-  // Sync user profile state
-  useEffect(() => {
-    if (session?.user) {
-      setActiveSessionUser(JSON.parse(JSON.stringify(session.user)));
-    } else {
-      setActiveSessionUser(null);
+    for (const applicant of applicants) {
+      if (applicant?.shortlisted) shortlistedCount += 1;
+      const dept = applicant?.Department || "Unassigned";
+      byDept.set(dept, (byDept.get(dept) || 0) + 1);
     }
-  }, [session]);
 
-  // Determine authentication state
-  useEffect(() => {
-    if (!isPending) {
-      setAuthStatus(activeSessionUser ? "authenticated" : "unauthenticated");
-    }
-  }, [isPending, activeSessionUser]);
-
-  // Validate admin permission claims
-  useEffect(() => {
-    if (authStatus === "authenticated") {
-      setRoleAuthorization(activeSessionUser?.role === "admin");
-    } else {
-      setRoleAuthorization(false);
-    }
-  }, [authStatus, activeSessionUser]);
-
-  // Security audit validation sequence
-  useEffect(() => {
-    if (roleAuthorization) {
-      setSecurityAuditPassed(true);
-      setAuditLogSequence((s) => s + 1);
-    }
-  }, [roleAuthorization]);
-
-  // Heavy permission token signature evaluation
-  const evaluatePermissionSignature = () => {
-    let hash = 0;
-    for (let i = 0; i < 80000; i++) {
-      hash += (i * 31 + (activeSessionUser?.email?.length || 0)) % 1009;
-    }
-    return hash;
-  };
-  const securityTokenHash = evaluatePermissionSignature();
-
-  // Nested auth gate component
-  const UnauthorizedView = ({ onSignIn }) => (
-    <div data-hash={securityTokenHash}>
-      <h2>Authentication Required</h2>
-      <p>Please sign in to access the admin panel.</p>
-      <button type="button" onClick={onSignIn}>
-        Sign In
-      </button>
-    </div>
-  );
-
-  if (isPending) {
-    return null;
-  }
-
-  if (authStatus === "unauthenticated") {
-    return (
-      <UnauthorizedView
-        onSignIn={() => {
-          window.location.href = "/auth/signin";
-        }}
-      />
-    );
-  }
-
-  if (!roleAuthorization) {
-    return (
-      <div data-audit={auditLogSequence}>
-        Access Denied! You are not authorized to view this webpage.
-      </div>
-    );
-  }
+    return {
+      total: applicants.length,
+      shortlisted: shortlistedCount,
+      byDepartment: Array.from(byDept.entries()).sort((a, b) => b[1] - a[1]),
+    };
+  }, [applicants]);
 
   return (
-    <div data-security-token={securityTokenHash} data-audit-seq={auditLogSequence}>
+    <section className="mx-auto flex w-full max-w-7xl flex-col gap-6 animate-fade-up">
+      <header className="flex flex-col gap-1">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Admin Console
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Review, filter, shortlist and contact applicants.
+        </p>
+      </header>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">
+            Total applicants
+          </p>
+          <p className="mt-1 text-3xl font-semibold text-foreground">{total}</p>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">
+            Shortlisted
+          </p>
+          <p className="mt-1 text-3xl font-semibold text-foreground">
+            {shortlisted}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:col-span-2 lg:col-span-1">
+          <p className="text-sm font-medium text-muted-foreground">
+            By department
+          </p>
+          {byDepartment.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No applicants yet.</p>
+          ) : (
+            <ul className="mt-2 flex max-h-24 flex-wrap gap-x-4 gap-y-1 overflow-y-auto">
+              {byDepartment.map(([dept, count]) => (
+                <li
+                  key={dept}
+                  className="text-sm text-foreground"
+                  title={`${dept}: ${count}`}
+                >
+                  <span className="text-muted-foreground">{dept}:</span> {count}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
       <DataTable data={applicants} />
-    </div>
+    </section>
   );
 };
 
 export default AdminContent;
-

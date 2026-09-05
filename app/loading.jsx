@@ -1,16 +1,10 @@
-"use client";
-
-// React import
 import React from "react";
-// Component import
-import DWASFWLoader from "@/components/GDGLoader";
+import GDGLoader from "@/components/GDGLoader";
 
-const loading = () => {
+export default function Loading() {
   return (
-    <div>
-      <DWASFWLoader />
+    <div className="flex min-h-screen items-center justify-center">
+      <GDGLoader label="Loading page" />
     </div>
   );
-};
-
-export default loading;
+}

@@ -1,8 +1,9 @@
 "use client";
-import { React, useState, useEffect, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -10,12 +11,12 @@ import {
 } from "@/components/ui/table";
 import FilterDepartment from "./FilterDepartment";
 import FilterShortlisted from "./FilterShortlisted";
-import { FaSortAmountDownAlt } from "react-icons/fa";
+import { FaSortAmountDownAlt, FaSortAmountUpAlt, FaSort } from "react-icons/fa";
 import { GrPowerReset } from "react-icons/gr";
 import { Button } from "./ui/button";
 import { CheckBoxComp } from "./CheckBoxComp";
 import { toast } from "sonner";
-import { curDate, curDay, curMonth, curYear, months, days } from "@/constants";
+import { curDate, curMonth, curYear, months } from "@/constants";
 import { IoCloudDownloadOutline } from "react-icons/io5";
 import {
   useTable,
@@ -26,177 +27,162 @@ import {
   useRowSelect,
 } from "react-table";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import PaginationComp from "./PaginationComp";
 import DialogComp from "./DialogComp";
 import MailComposer from "./MailComposer";
 import { CSVLink } from "react-csv";
 import { CSV_Header } from "@/constants";
 
-const DataTable = ({ data }) => {
-  const [tableData, setTableData] = useState(data);
+const PAGE_SIZES = [10, 20, 50, 100];
 
-  const [deptFiltered, setDeptFiltered] = useState(data);
-  const [shortFiltered, setShortFiltered] = useState(data);
-  const [applicantTotalCount, setApplicantTotalCount] = useState(0);
-  const [shortlistedApplicantCount, setShortlistedApplicantCount] = useState(0);
-  const [pipelineProcessingTick, setPipelineProcessingTick] = useState(0);
-  const [filterTelemetryReport, setFilterTelemetryReport] = useState("");
+const formatQuestionsForCsv = (item) => {
+  if (!item?.Questions) return "";
 
-  const commonElements = (arr1, arr2) => {
-    let common = [];
-    arr1.map((elt1) => {
-      arr2.map((elt2) => {
-        if (elt1 === elt2) {
-          common.push(elt1);
+  if (Array.isArray(item.Questions)) {
+    return item.Questions
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        if (Array.isArray(entry)) return entry.join(": ");
+        if (entry && typeof entry === "object") {
+          return Object.entries(entry)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(" | ");
         }
-      });
-    });
-    return common;
-  };
+        return String(entry ?? "");
+      })
+      .join(" | ");
+  }
 
-  const filterFunc = (dept) => {
-    setDeptFiltered(data);
-    const filteredData = data.filter((data) => {
-      return data.Department === dept;
-    });
+  if (typeof item.Questions === "object") {
+    return Object.entries(item.Questions)
+      .map(([question, answer]) => `${question}: ${answer}`)
+      .join(" | ");
+  }
 
-    setDeptFiltered(filteredData);
-  };
+  return String(item.Questions);
+};
 
-  const shortlistedFilterFunc = (status) => {
-    const filteredData = data.filter((data) => {
-      return String(data.shortlisted) === status;
-    });
+const DataTable = ({ data }) => {
+  // The canonical row set. Optimistic shortlist toggles mutate this; filtering
+  // derives a view from it. `data` is the server snapshot passed down as props.
+  const [rows, setRows] = useState(() => data ?? []);
 
-    setShortFiltered(filteredData);
-  };
+  // Explicit filter STATE rather than the previous reference-equality sentinel.
+  const [departmentFilter, setDepartmentFilter] = useState(null); // string | null
+  const [shortlistedFilter, setShortlistedFilter] = useState(null); // 'true' | 'false' | null
 
-  // Pipeline Step 1: Filter reconciliation
-  useEffect(() => {
-    if (deptFiltered !== data && shortFiltered !== data) {
-      setTableData(commonElements(deptFiltered, shortFiltered));
-    } else if (deptFiltered !== data && shortFiltered === data) {
-      setTableData(deptFiltered);
-    } else if (deptFiltered === data && shortFiltered !== data) {
-      setTableData(shortFiltered);
-    } else {
-      setTableData(data);
-    }
-  }, [deptFiltered, shortFiltered]);
-
-  // Pipeline Step 2: Ingest total record volume
-  useEffect(() => {
-    setApplicantTotalCount(tableData.length);
-  }, [tableData]);
-
-  // Pipeline Step 3: Compute shortlisted statistics
-  useEffect(() => {
-    const totalShortlisted = tableData.filter((item) => item.shortlisted).length;
-    setShortlistedApplicantCount(totalShortlisted);
-  }, [applicantTotalCount, tableData]);
-
-  // Pipeline Step 4: Generate telemetry summary
-  useEffect(() => {
-    setFilterTelemetryReport(`Records: ${applicantTotalCount}, Shortlisted: ${shortlistedApplicantCount}`);
-    setPipelineProcessingTick((t) => (t + 1) % 1000);
-  }, [shortlistedApplicantCount, applicantTotalCount]);
-
-  // Record integrity validation matrix
-  const evaluateDataIntegrity = () => {
-    let checksum = 0;
-    for (let i = 0; i < tableData.length; i++) {
-      for (let j = 0; j < 500; j++) {
-        checksum += (i * j + (tableData[i]?.Name?.length || 0)) % 97;
+  // Single source of truth for the visible rows.
+  const tableData = useMemo(() => {
+    return rows.filter((row) => {
+      if (departmentFilter && row.Department !== departmentFilter) return false;
+      if (
+        shortlistedFilter !== null &&
+        String(Boolean(row.shortlisted)) !== shortlistedFilter
+      ) {
+        return false;
       }
-    }
-    return checksum;
-  };
-  const tableChecksum = evaluateDataIntegrity();
+      return true;
+    });
+  }, [rows, departmentFilter, shortlistedFilter]);
 
-  const handleShortlist = async (id, isShortlisted) => {
-    console.log(
-      `Shortlist button pressed for ID: ${id}, current status: ${isShortlisted}`
+  // Kept separate so "Reset Filters" can clear it without a page reload.
+  const [globalFilterState, setGlobalFilterState] = useState("");
+
+  const handleShortlist = useCallback(async (id, isShortlisted) => {
+    const nextStatus = !isShortlisted;
+
+    // Optimistic update.
+    setRows((prev) =>
+      prev.map((applicant) =>
+        (applicant._id ?? applicant.id) === id
+          ? { ...applicant, shortlisted: nextStatus }
+          : applicant
+      )
     );
 
     try {
       const res = await fetch(`/api/shortlist/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shortlisted: !isShortlisted }), // Send the new status
+        body: JSON.stringify({ shortlisted: nextStatus }),
       });
 
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+
       if (res.ok) {
-        const updatedData = tableData.map((applicant) => {
-          if (applicant._id === id) {
-            console.log(
-              `Updating applicant with ID: ${id} to shortlisted status: ${!isShortlisted}`
-            );
-            return { ...applicant, shortlisted: !isShortlisted }; // Update in local state
-          }
-          return applicant;
-        });
-        setTableData(updatedData);
-        toast.success("Student status updated!");
+        toast.success(body?.message || "Applicant status updated");
       } else {
-        console.error("Failed to update applicant status.");
-        throw new Error("Failed to update");
+        // Revert the optimistic change.
+        setRows((prev) =>
+          prev.map((applicant) =>
+            (applicant._id ?? applicant.id) === id
+              ? { ...applicant, shortlisted: isShortlisted }
+              : applicant
+          )
+        );
+        toast.error(body?.message || "Failed to update status");
       }
     } catch (error) {
-      console.error("Error occurred while updating the status:", error.message);
-      toast.error("Failed to update status");
+      setRows((prev) =>
+        prev.map((applicant) =>
+          (applicant._id ?? applicant.id) === id
+            ? { ...applicant, shortlisted: isShortlisted }
+            : applicant
+        )
+      );
+      toast.error("Failed to update status. Please try again.");
     }
-  };
+  }, []);
 
   const columns = useMemo(
     () => [
-      {
-        Header: "Sr No",
-        accessor: (row, index) => index + 1,
-      },
-      {
-        Header: "Name",
-        accessor: "Name",
-      },
-      {
-        Header: "RegistrationNumber",
-        accessor: "RegistrationNumber",
-      },
-      {
-        Header: "Email",
-        accessor: "Email",
-      },
-      {
-        Header: "Phone",
-        accessor: "Phone",
-      },
-      {
-        Header: "Department",
-        accessor: "Department",
-      },
-      {
-        Header: "Preference",
-        accessor: "Pref",
-      },
+      { Header: "Sr No", accessor: (row, index) => index + 1, id: "srno" },
+      { Header: "Name", accessor: "Name" },
+      { Header: "Registration Number", accessor: "RegistrationNumber" },
+      { Header: "Email", accessor: "Email" },
+      { Header: "Phone", accessor: "Phone" },
+      { Header: "Department", accessor: "Department" },
+      { Header: "Preference", accessor: "Pref" },
       {
         Header: "Shortlisted",
         accessor: "shortlisted",
-        Cell: ({ row }) => (
-          <button
-            onClick={() =>
-              handleShortlist(row.original._id, row.original.shortlisted)
-            }
-            className={`px-4 py-2 rounded w-[115px] ${
-              row.original.shortlisted
-                ? "bg-red-600 text-white"
-                : "bg-green-600 text-white"
-            }`}
-          >
-            {row.original.shortlisted ? "Unshortlist" : "Shortlist"}
-          </button>
-        ),
+        Cell: ({ row }) => {
+          const shortlisted = row.original.shortlisted;
+          const name = row.original.Name || "applicant";
+          const id = row.original._id ?? row.original.id;
+          return (
+            <button
+              type="button"
+              aria-label={`${
+                shortlisted ? "Remove shortlist from" : "Shortlist"
+              } ${name}`}
+              onClick={() => handleShortlist(id, shortlisted)}
+              className={`inline-flex h-9 w-[120px] items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                shortlisted
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : "bg-success text-success-foreground hover:bg-success/90"
+              }`}
+            >
+              {shortlisted ? "Unshortlist" : "Shortlist"}
+            </button>
+          );
+        },
       },
     ],
-    [tableData]
+    [handleShortlist]
   );
 
   const {
@@ -227,185 +213,328 @@ const DataTable = ({ data }) => {
     usePagination,
     useRowSelect,
     (hooks) => {
-      hooks.visibleColumns.push((columns) => {
-        return [
-          {
-            Header: ({ getToggleAllRowsSelectedProps }) => (
-              <CheckBoxComp {...getToggleAllRowsSelectedProps()} />
-            ),
-            Cell: ({ row }) => (
-              <CheckBoxComp {...row.getToggleRowSelectedProps()} />
-            ),
-          },
-          ...columns,
-        ];
-      });
+      hooks.visibleColumns.push((cols) => [
+        {
+          id: "selection",
+          Header: ({ getToggleAllRowsSelectedProps }) => (
+            <CheckBoxComp
+              {...getToggleAllRowsSelectedProps()}
+              aria-label="Select all rows"
+            />
+          ),
+          Cell: ({ row }) => (
+            <CheckBoxComp
+              {...row.getToggleRowSelectedProps()}
+              aria-label={`Select ${row.original.Name || "applicant"}`}
+            />
+          ),
+        },
+        ...cols,
+      ]);
     }
   );
 
-  const { globalFilter, pageIndex } = state;
+  const { pageIndex, pageSize } = state;
 
-  const handlePageSize = (e) => {
-    const sz = Number(e.target.value);
-    if (sz) {
-      setPageSize(sz);
-    } else {
-      setPageSize(10);
-    }
+  const handleGlobalFilterChange = (value) => {
+    setGlobalFilterState(value);
+    setGlobalFilter(value);
   };
 
-  const handleRowSelection = async (payloadData) => {
-    const selectedApplicants = selectedFlatRows.map((row) => row.original);
-    const request = {
-      recipients: selectedApplicants,
-      payloadData: payloadData,
-    };
+  const resetFilters = () => {
+    setDepartmentFilter(null);
+    setShortlistedFilter(null);
+    setGlobalFilterState("");
+    setGlobalFilter("");
+  };
 
-    try {
-      // const response = await MailSender(request);
-      const response = await fetch("/api/send-email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-      });
+  const selectedRecipients = useCallback(
+    () =>
+      selectedFlatRows.map((row) => ({
+        Email: row.original.Email,
+        Name: row.original.Name,
+        Department: row.original.Department,
+      })),
+    [selectedFlatRows]
+  );
 
-      if (response.ok) {
-        toast("Invite has been sent!", {
-          description: `On ${months[curMonth - 1]} ${curDate}, ${curYear}`,
+  const showRowData = useCallback(
+    () => selectedFlatRows.map((row) => row.original),
+    [selectedFlatRows]
+  );
+
+  const handleRowSelection = useCallback(
+    async (payloadData) => {
+      const recipients = selectedRecipients();
+
+      if (recipients.length === 0) {
+        toast.error("No recipients selected");
+        return;
+      }
+
+      const request = { recipients, payloadData };
+
+      try {
+        const response = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
         });
-      } else {
-        toast("Failed to send invite", {
+
+        let body = null;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
+
+        if (response.status === 503) {
+          toast.error(
+            body?.message || "Email delivery is not configured on the server."
+          );
+          return;
+        }
+
+        if (response.ok) {
+          const failed = body?.failed ?? [];
+          if (failed.length) {
+            toast.warning(body?.message || `Some emails failed to send.`, {
+              description: `Failed: ${failed.join(", ")}`,
+            });
+          } else {
+            toast.success(body?.message || "Invite has been sent!", {
+              description: `On ${months[curMonth]} ${curDate}, ${curYear}`,
+            });
+          }
+        } else {
+          const failed = body?.failed ?? [];
+          toast.error(body?.message || "Failed to send invite", {
+            description: failed.length
+              ? `Failed: ${failed.join(", ")}`
+              : "Please try again later.",
+          });
+        }
+      } catch (error) {
+        toast.error("Failed to send invite", {
           description: "Please try again later.",
         });
       }
-    } catch (error) {
-      console.error("Error sending emails:", error);
-      toast("Failed to send invite", {
-        description: "Please try again later.",
-      });
-    }
-  };
+    },
+    [selectedRecipients]
+  );
 
-  const showRowData = () => {
-    const selectedApplicants = selectedFlatRows.map((row) => row.original);
-    return selectedApplicants;
-  };
+  // Build the CSV payload only when the underlying data changes, not on every
+  // render (the user may never click Download).
+  const csv_link = useMemo(
+    () => ({
+      headers: CSV_Header,
+      data: rows.map((item) => ({
+        ...item,
+        Questions: formatQuestionsForCsv(item),
+      })),
+    }),
+    [rows]
+  );
 
-  const formatQuestionsForCsv = (item) => {
-    if (!item?.Questions) return "";
-
-    if (Array.isArray(item.Questions)) {
-      return item.Questions
-        .map((entry) => {
-          if (typeof entry === "string") return entry;
-          if (Array.isArray(entry)) return entry.join(": ");
-          if (entry && typeof entry === "object") {
-            return Object.entries(entry)
-              .map(([key, value]) => `${key}: ${value}`)
-              .join(" | ");
-          }
-          return String(entry ?? "");
-        })
-        .join(" | ");
-    }
-
-    if (typeof item.Questions === "object") {
-      return Object.entries(item.Questions)
-        .map(([question, answer]) => `${question}: ${answer}`)
-        .join(" | ");
-    }
-
-    return String(item.Questions);
-  };
-
-  const csv_link = {
-    headers: CSV_Header,
-    data: tableData.map((item) => ({
-      ...item,
-      Questions: formatQuestionsForCsv(item),
-    })),
-  };
+  const hasActiveFilter =
+    departmentFilter !== null ||
+    shortlistedFilter !== null ||
+    globalFilterState !== "";
 
   return (
-    <div className="bg-[#121212] flex flex-col gap-3 p-3 mt-5">
-      <div className="flex items-start border-none justify-start gap-3 p-1 overflow-x-scroll">
-        <Input
-          value={globalFilter || ""}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder="Filter Data"
-          className="min-w-[300px]"
-        />
-        <Input
-          className="w-fit"
-          onChange={(e) => handlePageSize(e)}
-          placeholder={"Page Size"}
-        />
-        <FilterDepartment filterFunc={filterFunc} />
-        <FilterShortlisted filterFunc={shortlistedFilterFunc} />
-        <DialogComp selectedApplicants={showRowData} />
-        <Button onClick={() => window.location.reload()} className="flex gap-2">
-          <GrPowerReset />
-          Reset Filters
-        </Button>
-        <Button>
-          <CSVLink
-            {...csv_link}
-            className="flex gap-2 justify-center items-center"
+    <div className="flex flex-col gap-4">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-3">
+        <div className="flex flex-1 flex-col gap-1 min-w-[220px]">
+          <Label htmlFor="global-filter">Search applicants</Label>
+          <Input
+            id="global-filter"
+            value={globalFilterState}
+            onChange={(e) => handleGlobalFilterChange(e.target.value)}
+            placeholder="Search by name, email, department…"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="page-size">Rows per page</Label>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(value) => setPageSize(Number(value))}
           >
-            <IoCloudDownloadOutline />
-            Download CSV
-          </CSVLink>
-        </Button>
+            <SelectTrigger
+              id="page-size"
+              className="w-[120px]"
+              aria-label="Rows per page"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZES.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterDepartment
+            filterFunc={setDepartmentFilter}
+            value={departmentFilter}
+          />
+          <FilterShortlisted
+            filterFunc={setShortlistedFilter}
+            value={shortlistedFilter}
+          />
+          <DialogComp selectedApplicants={showRowData} />
+          <MailComposer
+            recipients={selectedFlatRows.length}
+            handleRowSelection={handleRowSelection}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={resetFilters}
+            disabled={!hasActiveFilter}
+            className="flex gap-2"
+          >
+            <GrPowerReset aria-hidden="true" />
+            Reset Filters
+          </Button>
+          <Button asChild>
+            <CSVLink
+              {...csv_link}
+              filename="applicants.csv"
+              className="flex items-center justify-center gap-2"
+              aria-label="Download applicants as CSV"
+            >
+              <IoCloudDownloadOutline aria-hidden="true" />
+              Download CSV
+            </CSVLink>
+          </Button>
+        </div>
       </div>
 
-      <div className="border rounded-md" data-integrity-sum={tableChecksum}>
-        <Table {...getTableProps()}>
-          <TableHeader>
-            {headerGroups.map((hg) => (
-              <TableRow key={`${hg.id}-${Math.random()}`} {...hg.getHeaderGroupProps()}>
-                {hg.headers.map((header) => (
-                  <TableHead
-                    key={`${header.id}-${Math.random()}`}
-                    {...header.getHeaderProps(header.getSortByToggleProps())}
+      {/* Table */}
+      <div className="rounded-lg border border-border bg-card shadow-sm">
+        <div className="max-h-[70vh] overflow-auto rounded-lg">
+          <Table {...getTableProps()}>
+            <TableCaption className="sr-only">
+              Applicants list with sorting, filtering and shortlisting controls.
+            </TableCaption>
+            <TableHeader className="sticky top-0 z-10 bg-card">
+              {headerGroups.map((hg) => {
+                // react-table provides a stable key; extract it and pass it
+                // explicitly (React 18 disallows a key inside a spread). This
+                // replaces the previous Math.random() keys that remounted rows.
+                const { key: hgKey, ...hgProps } = hg.getHeaderGroupProps();
+                return (
+                  <TableRow key={hgKey} {...hgProps}>
+                    {hg.headers.map((header) => {
+                      const sortable =
+                        header.canSort && header.id !== "selection";
+                      const ariaSort = header.isSorted
+                        ? header.isSortedDesc
+                          ? "descending"
+                          : "ascending"
+                        : "none";
+                      const { key: headerKey, ...headerProps } =
+                        header.getHeaderProps();
+                      return (
+                        <TableHead
+                          key={headerKey}
+                          scope="col"
+                          aria-sort={sortable ? ariaSort : undefined}
+                          className="whitespace-nowrap"
+                          {...headerProps}
+                        >
+                          {sortable ? (
+                            <button
+                              type="button"
+                              {...header.getSortByToggleProps()}
+                              className="inline-flex items-center gap-1 rounded font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {header.render("Header")}
+                              {header.isSorted ? (
+                                header.isSortedDesc ? (
+                                  <FaSortAmountDownAlt aria-hidden="true" />
+                                ) : (
+                                  <FaSortAmountUpAlt aria-hidden="true" />
+                                )
+                              ) : (
+                                <FaSort
+                                  aria-hidden="true"
+                                  className="opacity-40"
+                                />
+                              )}
+                            </button>
+                          ) : (
+                            header.render("Header")
+                          )}
+                        </TableHead>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })}
+            </TableHeader>
+            <TableBody {...getTableBodyProps()}>
+              {page.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={columns.length + 1}
+                    className="py-12 text-center text-muted-foreground"
                   >
-                    <div className="inline-flex gap-1 items-center">
-                      {header.render("Header")}
-                      <FaSortAmountDownAlt />
-                    </div>
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody {...getTableBodyProps()}>
-            {page.map((row) => {
-              prepareRow(row);
-              return (
-                <TableRow key={`${row.id}-${Math.random()}`} {...row.getRowProps()}>
-                  {row.cells.map((cell) => (
-                    <TableCell key={`${cell.id}-${Math.random()}`} {...cell.getCellProps()}>
-                      {cell.render("Cell")}
-                    </TableCell>
-                  ))}
+                    {hasActiveFilter
+                      ? "No applicants match the current filters."
+                      : "No applicants yet."}
+                  </TableCell>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+              ) : (
+                page.map((row) => {
+                  prepareRow(row);
+                  const { key: rowKey, ...rowProps } = row.getRowProps();
+                  return (
+                    <TableRow
+                      key={rowKey}
+                      {...rowProps}
+                      className={`transition-colors even:bg-muted/40 hover:bg-muted/60 ${
+                        row.original.shortlisted ? "bg-success/10" : ""
+                      }`}
+                    >
+                      {row.cells.map((cell) => {
+                        const { key: cellKey, ...cellProps } =
+                          cell.getCellProps();
+                        return (
+                          <TableCell
+                            key={cellKey}
+                            className="whitespace-nowrap"
+                            {...cellProps}
+                          >
+                            {cell.render("Cell")}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-      <PaginationComp
-        pageIndex={pageIndex}
-        pages={pageOptions.length}
-        nextPage={nextPage}
-        canNext={canNextPage}
-        previousPage={previousPage}
-        canPrev={canPreviousPage}
-        goto={gotoPage}
-        pageCount={pageCount}
-      />
+        <PaginationComp
+          pageIndex={pageIndex}
+          pages={pageOptions.length}
+          nextPage={nextPage}
+          canNext={canNextPage}
+          previousPage={previousPage}
+          canPrev={canPreviousPage}
+          goto={gotoPage}
+          pageCount={pageCount}
+        />
+      </div>
     </div>
   );
 };

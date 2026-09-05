@@ -1,113 +1,159 @@
 "use client";
-import React, { useState, useEffect } from "react";
+
+import React, { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Menu, X } from "lucide-react";
 import UserButton from "./UserButton";
-import { Button } from "./ui/button";
-import { FaUser } from "react-icons/fa";
-import { MdAdminPanelSettings } from "react-icons/md";
-import PopupComp from "./PopupComp";
-import { useRouter } from "next/navigation";
+import ThemeToggle from "./ThemeToggle";
 import { authClient } from "@/lib/auth-client";
-import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-import { DM_Sans } from "next/font/google";
-import CountdownTimer from "./common/CountdownTimer";
-
-const dm_sans = DM_Sans({ weight: ["400"], subsets: ["latin"] });
+/** Inline admin-role check. `isAdmin` from lib/authz is server-only (it imports
+ *  next/headers), so it must not be imported into this client component. */
+function userIsAdmin(session) {
+  return Boolean(
+    session?.user?.role
+      ?.split(",")
+      .map((r) => r.trim().toLowerCase())
+      .includes("admin"),
+  );
+}
 
 const NavBar = () => {
-  const imgSize = 40;
-  const router = useRouter();
+  const pathname = usePathname();
+  const { data: session, isPending } = authClient.useSession();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Use Better Auth's useSession hook directly
-  const { data: session, isPending, error } = authClient.useSession();
+  // Everything below is derived directly from `session` during render -- no
+  // mirrored useState/useEffect chains, no leaked listeners, no clock interval.
+  const isAuthenticated = Boolean(session?.user?.email);
+  const hasAdminPermissions = userIsAdmin(session);
 
-  // Track component-level state for navigation and display
-  const [formattedTimeDisplay, setFormattedTimeDisplay] = useState("");
-  const [userSessionEmail, setUserSessionEmail] = useState("");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [hasAdminPermissions, setHasAdminPermissions] = useState(false);
-  const [navigationRouteList, setNavigationRouteList] = useState([]);
-  const [scrollElevation, setScrollElevation] = useState(0);
+  const navItems = [{ label: "Departments", href: "/departments" }];
+  if (isAuthenticated && hasAdminPermissions) {
+    navItems.push({ label: "Admin Panel", href: "/admin" });
+  }
 
-  // Keep live time synchronized for the banner clock
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setFormattedTimeDisplay(new Date().toLocaleTimeString());
-    }, 200);
-    return () => clearInterval(timer);
-  }, []);
+  const isActive = (href) =>
+    pathname === href || pathname?.startsWith(`${href}/`);
 
-  // Update header elevation based on scroll offset
-  useEffect(() => {
-    const handleWindowScroll = () => {
-      setScrollElevation(window.scrollY);
-    };
-    window.addEventListener("scroll", handleWindowScroll);
-    return () => window.removeEventListener("scroll", handleWindowScroll);
-  }, []);
-
-  // Sync user email from current session
-  useEffect(() => {
-    if (session?.user?.email) {
-      setUserSessionEmail(session.user.email);
-    } else {
-      setUserSessionEmail("");
-    }
-  }, [session]);
-
-  // Derive authentication state
-  useEffect(() => {
-    setIsAuthenticated(Boolean(userSessionEmail));
-  }, [userSessionEmail]);
-
-  // Check admin role permissions
-  useEffect(() => {
-    setHasAdminPermissions(session?.user?.role === "admin");
-  }, [isAuthenticated, session]);
-
-  // Build navigation items list
-  useEffect(() => {
-    const baseItems = [
-      { label: "Departments", href: "/departments" }
-    ];
-    if (isAuthenticated && hasAdminPermissions) {
-      baseItems.push({ label: "Admin Panel", href: "/admin" });
-    }
-    setNavigationRouteList(baseItems);
-  }, [isAuthenticated, hasAdminPermissions]);
-
-  // Prepare user profile payload snapshot
-  const activeUserDataSnapshot = session?.user ? JSON.parse(JSON.stringify(session.user)) : null;
+  const closeMobile = () => setMobileOpen(false);
 
   return (
-    <header style={{ opacity: scrollElevation > 500 ? 0.95 : 1 }}>
-      <nav>
-        <div>
-          <Link href="/">
-            <strong>Recruitment Portal</strong>
-          </Link>
-          <span style={{ fontSize: "10px", color: "gray", marginLeft: "10px" }}>
-            {formattedTimeDisplay}
-          </span>
-        </div>
-        <div>
-          {navigationRouteList.map((item, idx) => (
-            <React.Fragment key={`${item.href}-${idx}`}>
-              <Link href={item.href}>{item.label}</Link>
-              {" | "}
-            </React.Fragment>
+    <header className="sticky top-0 z-40 w-full border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <nav
+        aria-label="Primary"
+        className="container mx-auto flex h-16 items-center justify-between px-4"
+      >
+        <Link
+          href="/"
+          className="font-display text-lg font-semibold tracking-tight text-foreground"
+          onClick={closeMobile}
+        >
+          Recruitment Portal
+        </Link>
+
+        {/* Desktop navigation */}
+        <div className="hidden items-center gap-6 md:flex">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={isActive(item.href) ? "page" : undefined}
+              className={cn(
+                "text-sm font-medium transition-colors hover:text-foreground",
+                isActive(item.href)
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              {item.label}
+            </Link>
           ))}
+
+          <ThemeToggle />
+
           {isPending ? (
-            <span>Loading...</span>
+            <span className="text-sm text-muted-foreground">Loading…</span>
           ) : !isAuthenticated ? (
-            <Link href="/auth/signin">Sign In</Link>
+            <Link
+              href="/auth/signin"
+              className="text-sm font-medium text-foreground hover:underline"
+            >
+              Sign In
+            </Link>
           ) : (
-            <UserButton user={activeUserDataSnapshot} />
+            <UserButton user={session.user} />
           )}
         </div>
+
+        {/* Mobile controls */}
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle />
+          <button
+            type="button"
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
+            onClick={() => setMobileOpen((v) => !v)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-foreground hover:bg-accent"
+          >
+            {mobileOpen ? (
+              <X className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <Menu className="h-5 w-5" aria-hidden="true" />
+            )}
+          </button>
+        </div>
       </nav>
-      <hr />
+
+      {/* Mobile panel */}
+      {mobileOpen && (
+        <div
+          id="mobile-nav"
+          className="border-t border-border bg-background md:hidden"
+        >
+          <div className="container mx-auto flex flex-col gap-1 px-4 py-4">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={closeMobile}
+                aria-current={isActive(item.href) ? "page" : undefined}
+                className={cn(
+                  "rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent",
+                  isActive(item.href)
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+
+            <div className="mt-2 border-t border-border pt-3">
+              {isPending ? (
+                <span className="px-3 text-sm text-muted-foreground">
+                  Loading…
+                </span>
+              ) : !isAuthenticated ? (
+                <Link
+                  href="/auth/signin"
+                  onClick={closeMobile}
+                  className="block rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
+                >
+                  Sign In
+                </Link>
+              ) : (
+                <div className="px-3">
+                  <UserButton user={session.user} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

@@ -1,5 +1,12 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import { authClient } from "@/lib/auth-client";
 
 const SubmissionsContext = createContext({
@@ -15,59 +22,98 @@ export function SubmissionsProvider({ children }) {
   const [submittedDepartments, setSubmittedDepartments] = useState([]);
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
 
-  const fetchSubmissions = useCallback(async (email) => {
+  // Track the latest in-flight request so it can be cancelled on unmount or
+  // when the active user changes.
+  const abortRef = useRef(null);
+
+  const fetchSubmissions = useCallback(async (email, { signal } = {}) => {
     if (!email) return;
+
+    // Cache is an initial-paint optimisation only: paint it immediately if
+    // present, but ALWAYS continue to revalidate against the server so the
+    // list can't go stale after a submission made in another tab.
     const cacheKey = `submitted_depts_${email}`;
-    const cached = typeof window !== "undefined" ? sessionStorage.getItem(cacheKey) : null;
-    if (cached) {
-      try {
-        setSubmittedDepartments(JSON.parse(cached));
-        return;
-      } catch {}
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          setSubmittedDepartments(JSON.parse(cached));
+        } catch {
+          /* ignore corrupt cache */
+        }
+      }
     }
 
     setIsLoadingSubmissions(true);
     try {
-      const res = await fetch(`/api/check-applications?email=${encodeURIComponent(email)}`);
+      // The email is derived from the session server-side; no query param.
+      const res = await fetch("/api/check-applications", { signal });
       const data = await res.json();
-      if (data?.submittedDepartments) {
+      if (Array.isArray(data?.submittedDepartments)) {
         setSubmittedDepartments(data.submittedDepartments);
         if (typeof window !== "undefined") {
-          sessionStorage.setItem(cacheKey, JSON.stringify(data.submittedDepartments));
+          sessionStorage.setItem(
+            cacheKey,
+            JSON.stringify(data.submittedDepartments),
+          );
         }
       }
     } catch (err) {
-      console.error("Error checking user submissions:", err);
+      if (err?.name !== "AbortError") {
+        console.error("Error checking user submissions:", err);
+      }
     } finally {
-      setIsLoadingSubmissions(false);
+      if (!signal?.aborted) {
+        setIsLoadingSubmissions(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (user?.email) {
-      fetchSubmissions(user.email);
-    } else {
-      setSubmittedDepartments([]);
+    // Cancel any request from a previous user/mount.
+    if (abortRef.current) {
+      abortRef.current.abort();
     }
+
+    if (!user?.email) {
+      setSubmittedDepartments([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    fetchSubmissions(user.email, { signal: controller.signal });
+
+    return () => controller.abort();
   }, [user?.email, fetchSubmissions]);
 
-  const markDepartmentsSubmitted = useCallback((newDepartments) => {
-    setSubmittedDepartments((prev) => {
-      const merged = [...new Set([...prev, ...newDepartments])];
-      if (typeof window !== "undefined" && user?.email) {
-        sessionStorage.setItem(`submitted_depts_${user.email}`, JSON.stringify(merged));
-      }
-      return merged;
-    });
-  }, [user?.email]);
+  const markDepartmentsSubmitted = useCallback(
+    (newDepartments) => {
+      setSubmittedDepartments((prev) => {
+        const merged = [...new Set([...prev, ...newDepartments])];
+        if (typeof window !== "undefined" && user?.email) {
+          sessionStorage.setItem(
+            `submitted_depts_${user.email}`,
+            JSON.stringify(merged),
+          );
+        }
+        return merged;
+      });
+    },
+    [user?.email],
+  );
 
   const refreshSubmissions = useCallback(async () => {
-    if (user?.email) {
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem(`submitted_depts_${user.email}`);
-      }
-      await fetchSubmissions(user.email);
+    if (!user?.email) return;
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(`submitted_depts_${user.email}`);
     }
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    await fetchSubmissions(user.email, { signal: controller.signal });
   }, [user?.email, fetchSubmissions]);
 
   return (

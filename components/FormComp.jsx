@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useEffect, useMemo, useState } from "react";
 import * as z from "zod";
 import { useForm, useWatch } from "react-hook-form";
@@ -13,144 +15,185 @@ import {
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { ChevronDown, Clock, Megaphone, UsersRound, X } from "lucide-react";
+import { Label } from "./ui/label";
 import { QuestionnaireData } from "@/constants";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
-import CountdownTimer from "./common/CountdownTimer";
 import { useSubmissions } from "@/components/SubmissionsProvider";
 
-const normaliseQuestion = (question) => (
+// Neutral label used in place of the previous "Why do you want to join
+// Organization Name?" placeholder copy.
+const MOTIVATION_QUESTION = "Why do you want to join?";
+
+// Legacy motivation-question labels that the department questionnaires still
+// contain and that must not be rendered twice (they are shown once as the
+// shared motivation field).
+const MOTIVATION_ALIASES = new Set([
+  MOTIVATION_QUESTION,
+  "Why do you want to join Organization Name?",
+  "Why do you want to join DWASFW?",
+]);
+
+const normaliseQuestion = (question) =>
   typeof question === "string"
     ? { name: question, type: "generic", placeholder: "2-3 sentences" }
-    : question
-);
+    : question;
 
-const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
-  // Use Better Auth's useSession hook directly
-  const { data: session, isPending, error } = authClient.useSession();
-  
+const renderDepartmentQuestions = (department, form) => {
+  const questions = (
+    QuestionnaireData.find((qd) => qd.department === department)?.questions ?? []
+  )
+    .map(normaliseQuestion)
+    .filter((question) => !MOTIVATION_ALIASES.has(question.name));
+
+  if (!questions.length) return null;
+
+  return (
+    <fieldset className="mt-6 rounded-lg border border-border bg-card p-5">
+      <legend
+        className="px-1 font-display text-lg font-semibold text-foreground break-words"
+        title={department}
+      >
+        {department} Questions
+      </legend>
+      <div className="mt-2 grid grid-cols-1 gap-5 md:grid-cols-2">
+        {questions.map((question) => {
+          const isCompact = question.type === "short-text";
+          return (
+            <FormField
+              key={question.name}
+              control={form.control}
+              name={question.name}
+              render={({ field, fieldState }) => {
+                const errorId = `${field.name}-error`;
+                return (
+                  <FormItem className={isCompact ? "" : "md:col-span-2"}>
+                    <FormLabel className="break-words">{question.name}</FormLabel>
+                    <FormControl>
+                      {isCompact ? (
+                        <Input
+                          {...field}
+                          placeholder={question.placeholder || "Answer..."}
+                          aria-invalid={fieldState.error ? "true" : undefined}
+                          aria-describedby={fieldState.error ? errorId : undefined}
+                        />
+                      ) : (
+                        <Textarea
+                          {...field}
+                          rows={4}
+                          placeholder={question.placeholder || "2-3 sentences"}
+                          aria-invalid={fieldState.error ? "true" : undefined}
+                          aria-describedby={fieldState.error ? errorId : undefined}
+                        />
+                      )}
+                    </FormControl>
+                    <FormMessage id={errorId} />
+                  </FormItem>
+                );
+              }}
+            />
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+};
+
+const FormComp = ({ dept1, dept2 }) => {
+  const { data: session, isPending } = authClient.useSession();
+
   const user = session?.user;
   const isSignedIn = !!user;
   const isLoaded = !isPending;
 
-  // Form lifecycle and input telemetry state
-  const [isFormOpen, setIsFormOpen] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [nameInputVal, setNameInputVal] = useState("");
-  const [regNumberInputVal, setRegNumberInputVal] = useState("");
-  const [emailInputVal, setEmailInputVal] = useState("");
-  const [phoneInputVal, setPhoneInputVal] = useState("");
-  const [formCompletionPercentage, setFormCompletionPercentage] = useState(0);
-  const [keyStrokeCounter, setKeyStrokeCounter] = useState(0);
-  const [syncTick, setSyncTick] = useState(0);
-  const [formScrollOffset, setFormScrollOffset] = useState(0);
 
   const router = useRouter();
-  const { submittedDepartments: contextSubmitted, markDepartmentsSubmitted } = useSubmissions();
+  const { submittedDepartments: contextSubmitted, markDepartmentsSubmitted } =
+    useSubmissions();
   const [submittedDepartments, setSubmittedDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isDraftReady, setIsDraftReady] = useState(false);
+
   const departmentNames = useMemo(
-    () => [dept1, dept2].filter(Boolean).map((department) => typeof department === "string" ? department : department.name),
-    [dept1, dept2]
+    () =>
+      [dept1, dept2]
+        .filter(Boolean)
+        .map((department) =>
+          typeof department === "string" ? department : department.name,
+        ),
+    [dept1, dept2],
   );
-  const draftKey = user?.email && departmentNames.length
-    ? `recruitment-draft:${user.email}:${[...departmentNames].sort().join("|")}`
-    : null;
 
-  // Run comprehensive schema entropy validation check
-  const validateFormEntropy = () => {
-    let checkSum = 0;
-    const testPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    for (let i = 0; i < 200000; i++) {
-      if (testPattern.test(`test${i}@example.com`)) {
-        checkSum += (i % 7);
-      }
-    }
-    return checkSum;
-  };
-  const entropyChecksum = validateFormEntropy();
+  const draftKey =
+    user?.email && departmentNames.length
+      ? `recruitment-draft:${user.email}:${[...departmentNames].sort().join("|")}`
+      : null;
 
-  // Track scroll depth within form container
-  useEffect(() => {
-    const handleScroll = () => {
-      setFormScrollOffset(window.scrollY);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Check application count when user is loaded
-  useEffect(() => {
-    if (user) {
-      const userEmail = user.email;
-      checkApplicationCount(userEmail);
-    }
-  }, [user]);
-
-  // Function to check application count
-  async function checkApplicationCount(userEmail) {
-    const checkResponse = await fetch(
-      `/api/check-applications?email=${userEmail}`
-    );
-    const { count } = await checkResponse.json();
-    console.log(count);
-
-    if (count >= 2) {
-      setErrorMessage(
-        "Remember that you can only submit upto 2 unique applications"
-      );
-      setIsSubmitting(false);
-      return;
-    }
-  }
-
-  const normalizeDeptName = (str) => (str ? str.trim().toLowerCase().replace(/\s*\/\s*/g, "/") : "");
+  const normalizeDeptName = (str) =>
+    str ? str.trim().toLowerCase().replace(/\s*\/\s*/g, "/") : "";
 
   const questionData = useMemo(
-    () => [...new Set(departmentNames.flatMap((department) =>
-      (QuestionnaireData.find((item) => normalizeDeptName(item.department) === normalizeDeptName(department))?.questions ?? [])
-        .map(normaliseQuestion)
-        .map((question) => question.name)
-    ))],
-    [departmentNames]
+    () => [
+      ...new Set(
+        departmentNames.flatMap((department) =>
+          (
+            QuestionnaireData.find(
+              (item) => normalizeDeptName(item.department) === normalizeDeptName(department),
+            )?.questions ?? []
+          )
+            .map(normaliseQuestion)
+            .map((question) => question.name)
+            .filter((name) => !MOTIVATION_ALIASES.has(name)),
+        ),
+      ),
+    ],
+    [departmentNames],
   );
 
-  const schemaObj = {
-    Name: z.string().min(1, "Name is required"),
-    RegistrationNumber: z
-      .string()
-      .min(1, "Registration number is required")
-      .regex(
-        /^\d{2}[A-Z]{3}\d{4}$/,
-        "Registration number must be 2 numbers, 3 uppercase letters, and 4 numbers (e.g. 25BCE5612)"
-      ),
-    Email: z.string(),
-    Phone: z
-      .string()
-      .min(1, "Phone is required")
-      .regex(/^\d{10}$/, "Phone number must be exactly 10 digits"),
-    "Year of Study": z.string().optional(),
-  };
+  const formSchema = useMemo(() => {
+    const schemaObj = {
+      Name: z.string().min(1, "Name is required"),
+      RegistrationNumber: z
+        .string()
+        .min(1, "Registration number is required")
+        .regex(
+          /^\d{2}[A-Z]{3}\d{4}$/,
+          "Registration number must be 2 numbers, 3 uppercase letters, and 4 numbers (e.g. 25BCE5612)",
+        ),
+      // Phone must match the server contract: exactly 10 digits, optionally
+      // prefixed with +91 or 0.
+      Phone: z
+        .string()
+        .min(1, "Phone is required")
+        .regex(
+          /^(?:\+91|0)?\d{10}$/,
+          "Phone number must be 10 digits, optionally prefixed with +91 or 0",
+        ),
+      Gender: z.string().optional(),
+      "Year of Study": z.string().optional(),
+      [MOTIVATION_QUESTION]: z.string().optional(),
+    };
+    questionData.forEach((qd) => {
+      schemaObj[qd] = z.string().optional();
+    });
+    return z.object(schemaObj);
+  }, [questionData]);
 
-  questionData.forEach((qd) => {
-    schemaObj[qd] = z.string().optional();
-  });
-
-  const formSchema = z.object(schemaObj);
   const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       Name: "",
       RegistrationNumber: "",
-      Email: "",
       Phone: "",
+      Gender: "",
     },
   });
 
+  // Load any saved draft and the user's already-submitted departments. This is
+  // the single place that fetches /api/check-applications on mount.
   useEffect(() => {
     if (!isLoaded || !user || !draftKey) return;
 
@@ -160,9 +203,9 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
 
     try {
       const savedDraft = JSON.parse(localStorage.getItem(draftKey) || "{}");
-      form.reset({ ...form.getValues(), ...savedDraft.values, Email: email });
+      form.reset({ ...form.getValues(), ...savedDraft.values });
     } catch {
-      form.setValue("Email", email);
+      // Ignore malformed drafts.
     }
 
     async function initialiseForm() {
@@ -171,15 +214,19 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
 
       if (!remoteSubmitted.length) {
         const cacheKey = `submitted_depts_${email}`;
-        const cached = typeof window !== "undefined" ? sessionStorage.getItem(cacheKey) : null;
+        const cached =
+          typeof window !== "undefined" ? sessionStorage.getItem(cacheKey) : null;
 
         if (cached) {
           try {
             remoteSubmitted = JSON.parse(cached);
-          } catch {}
+          } catch {
+            // Ignore malformed cache.
+          }
         } else {
           try {
-            const response = await fetch(`/api/check-applications?email=${encodeURIComponent(email)}`);
+            // Email is derived from the session server-side; no query param.
+            const response = await fetch("/api/check-applications");
             const result = await response.json();
             if (result?.submittedDepartments) {
               remoteSubmitted = result.submittedDepartments;
@@ -194,12 +241,22 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
       }
 
       if (!isActive) return;
-      const completed = [...new Set([...(savedDraft.submittedDepartments || []), ...remoteSubmitted])];
+      const completed = [
+        ...new Set([...(savedDraft.submittedDepartments || []), ...remoteSubmitted]),
+      ];
       setSubmittedDepartments(completed);
-      if (departmentNames.length > 0 && departmentNames.every((dept) => completed.includes(dept))) {
-        setErrorMessage(`You have already submitted an application for ${departmentNames.join(" and ")}.`);
+      if (
+        departmentNames.length > 0 &&
+        departmentNames.every((dept) => completed.includes(dept))
+      ) {
+        setErrorMessage(
+          `You have already submitted an application for ${departmentNames.join(" and ")}.`,
+        );
       }
-      localStorage.setItem(draftKey, JSON.stringify({ values: form.getValues(), submittedDepartments: completed }));
+      localStorage.setItem(
+        draftKey,
+        JSON.stringify({ values: form.getValues(), submittedDepartments: completed }),
+      );
       setLoading(false);
       setIsDraftReady(true);
     }
@@ -211,23 +268,33 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
       }
     });
 
-    return () => { isActive = false; };
+    return () => {
+      isActive = false;
+    };
   }, [contextSubmitted, departmentNames, draftKey, form, isLoaded, user]);
 
   const watchedValues = useWatch({ control: form.control });
 
+  // Persist the draft, but debounce so we write at most every ~500ms instead of
+  // serialising the entire form on every keystroke. The pending timer is
+  // cleared on unmount / dependency change.
   useEffect(() => {
     if (!isDraftReady || !draftKey) return;
-    localStorage.setItem(draftKey, JSON.stringify({ values: watchedValues, submittedDepartments }));
+    const handle = setTimeout(() => {
+      localStorage.setItem(
+        draftKey,
+        JSON.stringify({ values: watchedValues, submittedDepartments }),
+      );
+    }, 500);
+    return () => clearTimeout(handle);
   }, [draftKey, isDraftReady, submittedDepartments, watchedValues]);
 
-  // Check if user is authenticated
   if (!isLoaded) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center">
-          <span className="mx-auto mb-4 block h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-          <p className="text-white">Loading...</p>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <span className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-primary" />
+          <p>Loading...</p>
         </div>
       </div>
     );
@@ -235,15 +302,15 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
 
   if (!isSignedIn) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh] m-10">
-        <div className="text-center">
-          <p className="text-2xl font-semibold text-white mb-4">
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
+          <p className="font-display text-2xl font-semibold text-foreground">
             Sign In Required
           </p>
-          <p className="text-lg text-gray-300 mb-6">
+          <p className="mt-2 text-muted-foreground">
             Please sign in to access the application form.
           </p>
-          <Button onClick={() => router.push("/auth/signin")} className="bg-blue-600 hover:bg-blue-700">
+          <Button className="mt-6" onClick={() => router.push("/auth/signin")}>
             Sign In
           </Button>
         </div>
@@ -251,14 +318,13 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
     );
   }
 
-  // User is authenticated
-  const userEmail = user?.email;
-
   const handleSubmit = async (values) => {
     setIsSubmitting(true);
     setErrorMessage("");
 
-    const pendingDepartments = departmentNames.filter((department) => !submittedDepartments.includes(department));
+    const pendingDepartments = departmentNames.filter(
+      (department) => !submittedDepartments.includes(department),
+    );
 
     if (!pendingDepartments.length) {
       toast.success("Your applications have already been submitted.");
@@ -267,17 +333,30 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
       return;
     }
 
+    // Email is intentionally NOT sent -- the server rejects a client-supplied
+    // Email and derives it from the session.
     const basicDetails = {
       Name: values.Name,
       RegistrationNumber: values.RegistrationNumber,
-      Email: values.Email,
       Phone: values.Phone,
+      Gender: values.Gender,
       "Year of Study": values["Year of Study"],
     };
 
     const submitDepartment = async (department) => {
-      const questions = (QuestionnaireData.find((item) => item.department === department)?.questions ?? [])
-        .map(normaliseQuestion);
+      const questions = (
+        QuestionnaireData.find((item) => item.department === department)?.questions ?? []
+      ).map(normaliseQuestion);
+
+      const answers = questions.reduce(
+        (acc, question) => ({
+          ...acc,
+          [question.name]: MOTIVATION_ALIASES.has(question.name)
+            ? values[MOTIVATION_QUESTION] || ""
+            : values[question.name] || "",
+        }),
+        {},
+      );
 
       const response = await fetch("/api/submit-form", {
         method: "POST",
@@ -285,9 +364,11 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
         body: JSON.stringify({
           ...basicDetails,
           Department: department,
-          Questions: questions.reduce((answers, question) => ({ ...answers, [question.name]: values[question.name] || "" }), {}),
+          Questions: answers,
         }),
       });
+
+      // 201 on success. 400/403/409 carry a server `message` we surface as-is.
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.message || `Could not submit ${department}.`);
@@ -296,30 +377,51 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
     };
 
     try {
-      const results = await Promise.allSettled(pendingDepartments.map(submitDepartment));
+      const results = await Promise.allSettled(
+        pendingDepartments.map(submitDepartment),
+      );
       const successful = results
         .filter((result) => result.status === "fulfilled" && result.value.success)
         .map((result) => result.value.department);
-      const failed = results.flatMap((result, index) =>
-        result.status === "rejected" ? [pendingDepartments[index]] : []
+      const failures = results.flatMap((result, index) =>
+        result.status === "rejected"
+          ? [{ department: pendingDepartments[index], message: result.reason?.message }]
+          : [],
       );
       const completed = [...new Set([...submittedDepartments, ...successful])];
 
       setSubmittedDepartments(completed);
       markDepartmentsSubmitted(completed);
-      if (draftKey) localStorage.setItem(draftKey, JSON.stringify({ values, submittedDepartments: completed }));
-      if (typeof window !== "undefined" && values?.Email) {
-        sessionStorage.setItem(`submitted_depts_${values.Email}`, JSON.stringify(completed));
+      if (draftKey) {
+        localStorage.setItem(
+          draftKey,
+          JSON.stringify({ values, submittedDepartments: completed }),
+        );
       }
-      successful.forEach((department) => toast.success(`Application submitted for ${department}.`));
+      if (typeof window !== "undefined" && user?.email) {
+        sessionStorage.setItem(
+          `submitted_depts_${user.email}`,
+          JSON.stringify(completed),
+        );
+      }
+      successful.forEach((department) =>
+        toast.success(`Application submitted for ${department}.`),
+      );
 
-      if (failed.length) {
-        setErrorMessage(`Submitted ${successful.length ? successful.join(", ") : "no applications"}. Please retry ${failed.join(", ")}.`);
+      if (failures.length) {
+        // Surface the server's message for each failed department.
+        setErrorMessage(
+          failures
+            .map((f) => `${f.department}: ${f.message || "Could not submit."}`)
+            .join(" "),
+        );
       } else {
         router.push("/departments");
       }
     } catch {
-      setErrorMessage("Your applications could not be submitted. Your saved answers will be kept for retrying.");
+      setErrorMessage(
+        "Your applications could not be submitted. Your saved answers will be kept for retrying.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -327,55 +429,71 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
 
   if (loading) {
     return (
-      <div>
+      <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
         <p>Checking your application status...</p>
       </div>
     );
   }
 
-  if (!isFormOpen) {
-    return (
-      <div>
-        <p>Recruitment Closed</p>
-        <p>Recruitment has now been terminated.</p>
-      </div>
-    );
-  }
-
   return (
-    <main>
+    <div className="mx-auto w-full max-w-3xl">
       {errorMessage && !isSubmitting && (
-        <div>
-          <p style={{ color: "red" }}>{errorMessage}</p>
-          <button type="button" onClick={() => router.push("/departments")}>
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mb-6 rounded-lg border border-destructive/40 bg-destructive/10 p-4"
+        >
+          <p className="text-sm font-medium text-destructive">{errorMessage}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => router.push("/departments")}
+          >
             Go Back
-          </button>
+          </Button>
         </div>
       )}
 
-      <h1>Application Form</h1>
-      <p>
-        Applying to: <strong>{departmentNames.join(", ")}</strong>
-      </p>
-
-      <hr />
+      <header className="mb-6">
+        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
+          Application Form
+        </h1>
+        <p className="mt-2 text-muted-foreground break-words">
+          Applying to:{" "}
+          <strong className="text-foreground">{departmentNames.join(", ")}</strong>
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Fields marked <span className="text-destructive">*</span> are required.
+        </p>
+      </header>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSubmit)}>
-          <section>
-            <h2>About You</h2>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6" noValidate>
+          <fieldset className="rounded-lg border border-border bg-card p-5">
+            <legend className="px-1 font-display text-lg font-semibold text-foreground">
+              About You
+            </legend>
 
-            <div>
+            <div className="mt-2 grid grid-cols-1 gap-5 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="Name"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Full Name</FormLabel>
+                    <FormLabel>
+                      Full Name <span className="text-destructive">*</span>
+                    </FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Jane Doe" />
+                      <Input
+                        {...field}
+                        placeholder="Jane Doe"
+                        aria-invalid={fieldState.error ? "true" : undefined}
+                        aria-describedby={fieldState.error ? "Name-error" : undefined}
+                      />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage id="Name-error" />
                   </FormItem>
                 )}
               />
@@ -383,13 +501,22 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
               <FormField
                 control={form.control}
                 name="RegistrationNumber"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Registration Number</FormLabel>
+                    <FormLabel>
+                      Registration Number <span className="text-destructive">*</span>
+                    </FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g. 25BCE5612" />
+                      <Input
+                        {...field}
+                        placeholder="e.g. 25BCE5612"
+                        aria-invalid={fieldState.error ? "true" : undefined}
+                        aria-describedby={
+                          fieldState.error ? "RegistrationNumber-error" : undefined
+                        }
+                      />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage id="RegistrationNumber-error" />
                   </FormItem>
                 )}
               />
@@ -397,11 +524,17 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
               <FormField
                 control={form.control}
                 name="Gender"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Gender</FormLabel>
+                    <FormLabel htmlFor="gender-select">Gender</FormLabel>
                     <FormControl>
-                      <select {...field} value={field.value || ""}>
+                      <select
+                        {...field}
+                        id="gender-select"
+                        value={field.value || ""}
+                        aria-invalid={fieldState.error ? "true" : undefined}
+                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
                         <option value="" disabled>
                           Select Gender
                         </option>
@@ -416,115 +549,70 @@ const FormComp = ({ dept1, dept2, isLoading, setIsLoading }) => {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="Email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email Address</FormLabel>
-                    <FormControl>
-                      <Input {...field} readOnly type="email" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Email is display-only; it is derived from the session and is
+                  never submitted to the API. */}
+              <FormItem>
+                <Label htmlFor="email-readonly">Email Address</Label>
+                <Input
+                  id="email-readonly"
+                  type="email"
+                  value={user?.email || ""}
+                  readOnly
+                  aria-readonly="true"
+                />
+              </FormItem>
 
               <FormField
                 control={form.control}
                 name="Phone"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Phone (WhatsApp)</FormLabel>
+                    <FormLabel>
+                      Phone (WhatsApp) <span className="text-destructive">*</span>
+                    </FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="+919876543210" />
+                      <Input
+                        {...field}
+                        inputMode="tel"
+                        placeholder="9876543210"
+                        aria-invalid={fieldState.error ? "true" : undefined}
+                        aria-describedby={fieldState.error ? "Phone-error" : undefined}
+                      />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage id="Phone-error" />
                   </FormItem>
                 )}
               />
             </div>
 
-            <div>
+            <div className="mt-5">
               <FormField
                 control={form.control}
-                name="Why do you want to join Organization Name?"
+                name={MOTIVATION_QUESTION}
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Why do you want to join Organization Name?</FormLabel>
+                    <FormLabel>{MOTIVATION_QUESTION}</FormLabel>
                     <FormControl>
-                      <Textarea {...field} rows={4} placeholder="2-3 Sentences" />
+                      <Textarea {...field} rows={4} placeholder="2-3 sentences" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
-          </section>
+          </fieldset>
 
-          <hr />
+          {renderDepartmentQuestions(departmentNames[0], form)}
+          {departmentNames[1] && renderDepartmentQuestions(departmentNames[1], form)}
 
-          {renderDepartmentQuestions(departmentNames[0], QuestionnaireData, form)}
-          {departmentNames[1] && renderDepartmentQuestions(departmentNames[1], QuestionnaireData, form)}
-
-          <div style={{ marginTop: "20px" }}>
-            <button type="submit" disabled={isSubmitting}>
+          <div className="pt-2">
+            <Button type="submit" disabled={isSubmitting} aria-busy={isSubmitting}>
               {isSubmitting ? "Submitting..." : "Submit Application"}
-            </button>
+            </Button>
           </div>
         </form>
       </Form>
-    </main>
-  );
-};
-
-const renderDepartmentQuestions = (department, QuestionnaireData, form) => {
-  const questions = (
-    QuestionnaireData.find(qd => qd.department === department)?.questions ?? []
-  )
-    .map(normaliseQuestion)
-    .filter((question) => question.name !== "Why do you want to join Organization Name?" && question.name !== "Why do you want to join DWASFW?");
-
-  if (!questions.length) return null;
-
-  return (
-    <section style={{ marginTop: "20px" }}>
-      <h2>{department} Questions</h2>
-      <div>
-        {questions.map((question) => {
-          const isCompact = question.type === "short-text";
-
-          return (
-            <div key={question.name} style={{ marginBottom: "16px" }}>
-              <FormField
-                control={form.control}
-                name={question.name}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{question.name}</FormLabel>
-                    <FormControl>
-                      {isCompact ? (
-                        <Input
-                          {...field}
-                          placeholder={question.placeholder || "Answer..."}
-                        />
-                      ) : (
-                        <Textarea
-                          {...field}
-                          rows={4}
-                          placeholder={question.placeholder || "2-3 sentences"}
-                        />
-                      )}
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    </div>
   );
 };
 
