@@ -1,44 +1,25 @@
 import { NextResponse } from "next/server";
 import { connect, serializeFirestoreData } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireUser } from "@/lib/authz";
+import { APPLICATIONS_COLLECTION } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req) {
+/**
+ * The signed-in user's own submissions, in full.
+ * The email is taken from the session, never from the query string.
+ */
+export async function GET() {
+  const { user, response: authError } = await requireUser();
+  if (authError) return authError;
+
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-    if (!session?.user) {
-      return NextResponse.json(
-        { message: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const user = session.user;
-    const userEmail = user.email;
-
-    const { searchParams } = new URL(req.url);
-    const email = searchParams.get("email");
-
-    if (!email) {
-      return NextResponse.json(
-        { message: "Email is required" },
-        { status: 400 }
-      );
-    }
-
-    if (email !== userEmail) {
-      return NextResponse.json(
-        { message: "You can only check your own applications" },
-        { status: 403 }
-      );
-    }
-
     const db = await connect();
-    const snapshot = await db.collection("formData").where("Email", "==", email).get();
+    const snapshot = await db
+      .collection(APPLICATIONS_COLLECTION)
+      .where("Email", "==", user.email)
+      .get();
+
     const data = snapshot.docs.map((doc) => ({
       id: doc.id,
       _id: doc.id,
@@ -47,13 +28,10 @@ export async function GET(req) {
 
     return NextResponse.json({ data }, { status: 200 });
   } catch (error) {
-    console.error("Error checking applications:", error);
+    console.error("Error fetching submissions:", error);
     return NextResponse.json(
-      {
-        message:
-          "Internal server error inside check-applications dir",
-      },
-      { status: 500 }
+      { message: "Failed to fetch submissions" },
+      { status: 500 },
     );
   }
 }

@@ -1,56 +1,41 @@
+import { NextResponse } from "next/server";
 import { connect } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireUser } from "@/lib/authz";
+import { APPLICATIONS_COLLECTION } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Whether the signed-in user has already applied to a given department.
+ * The email is taken from the session, never from the query string.
+ */
 export async function GET(request) {
+  const { user, response: authError } = await requireUser();
+  if (authError) return authError;
+
+  const department = new URL(request.url).searchParams.get("department");
+  if (!department) {
+    return NextResponse.json(
+      { message: "A department is required" },
+      { status: 400 },
+    );
+  }
+
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-    if (!session?.user) {
-      return new Response(
-        JSON.stringify({ error: "Authentication required" }),
-        { status: 401 }
-      );
-    }
-
-    const user = session.user;
-    const userEmail = user.email;
-
-    const { searchParams } = new URL(request.url);
-    const email = searchParams.get("email");
-    const department = searchParams.get("department");
-
-    if (!email || !department) {
-      return new Response(
-        JSON.stringify({ error: "Missing email or department" }),
-        { status: 400 }
-      );
-    }
-
-    if (email !== userEmail) {
-      return new Response(
-        JSON.stringify({ error: "You can only check your own submissions" }),
-        { status: 403 }
-      );
-    }
-
     const db = await connect();
     const snapshot = await db
-      .collection("formData")
-      .where("Email", "==", email)
+      .collection(APPLICATIONS_COLLECTION)
+      .where("Email", "==", user.email)
       .where("Department", "==", department)
+      .limit(1)
       .get();
 
-    return new Response(JSON.stringify({ submitted: snapshot.size > 0 }), {
-      status: 200,
-    });
+    return NextResponse.json({ submitted: !snapshot.empty }, { status: 200 });
   } catch (error) {
     console.error("Error checking department submission:", error);
-    return new Response(JSON.stringify({ error: "Database query failed" }), {
-      status: 500,
-    });
+    return NextResponse.json(
+      { message: "Database query failed" },
+      { status: 500 },
+    );
   }
 }

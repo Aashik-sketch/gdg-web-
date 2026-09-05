@@ -1,53 +1,18 @@
-import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getFirestore, Firestore } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
+import { getFirestoreDb } from "./firebase";
 
-const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "demo-DWASFW-rec";
-const FIREBASE_CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL;
-const FIREBASE_PRIVATE_KEY = process.env.FIREBASE_PRIVATE_KEY?.replace(
-  /\\n/g,
-  "\n",
-);
-const GOOGLE_APPLICATION_CREDENTIALS =
-  process.env.GOOGLE_APPLICATION_CREDENTIALS;
+/**
+ * Firestore access for server components and route handlers.
+ *
+ * The credential handling and app initialisation that used to live here now
+ * lives in lib/firebase.js, shared with lib/auth.js.
+ */
+export const connect = async (): Promise<Firestore> => getFirestoreDb();
 
-const hasServiceAccount =
-  FIREBASE_PROJECT_ID && FIREBASE_CLIENT_EMAIL && FIREBASE_PRIVATE_KEY;
-const hasCredentials =
-  hasServiceAccount || Boolean(GOOGLE_APPLICATION_CREDENTIALS) || Boolean(process.env.FIRESTORE_EMULATOR_HOST);
-
-let cached: FirestoreConn = (global as any).firestore;
-
-if (!cached) {
-  cached = (global as any).firestore = {
-    db: null,
-  };
-}
-
-export const connect = async (): Promise<Firestore> => {
-  if (!hasCredentials && process.env.NODE_ENV === "production" && !process.env.BUILDING) {
-    throw new Error(
-      "Please define GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in .env.local",
-    );
-  }
-
-  if (cached.db) return cached.db;
-
-  const appOptions: any = { projectId: FIREBASE_PROJECT_ID };
-  if (FIREBASE_CLIENT_EMAIL && FIREBASE_PRIVATE_KEY) {
-    appOptions.credential = cert({
-      projectId: FIREBASE_PROJECT_ID,
-      clientEmail: FIREBASE_CLIENT_EMAIL,
-      privateKey: FIREBASE_PRIVATE_KEY,
-    });
-  }
-
-  const app = getApps()[0] || initializeApp(appOptions);
-
-  cached.db = getFirestore(app);
-  console.log("Connected to Firestore");
-  return cached.db;
-};
-
+/**
+ * Convert Firestore values into something `JSON.stringify`-able so they can
+ * cross the server/client boundary: Timestamps and Dates become ISO strings.
+ */
 export const serializeFirestoreData = (value: any): any => {
   if (value === null || value === undefined) return value;
 

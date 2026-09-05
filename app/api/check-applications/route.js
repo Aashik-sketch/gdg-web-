@@ -1,58 +1,47 @@
 import { NextResponse } from "next/server";
 import { connect } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireUser } from "@/lib/authz";
+import { APPLICATIONS_COLLECTION, MAX_APPLICATIONS_PER_USER } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req) {
+/**
+ * How many applications the signed-in user has submitted, and to which
+ * departments.
+ *
+ * The email is taken from the session rather than the `email` query parameter.
+ * The parameter is still accepted by callers but ignored, which removes the
+ * "check that the param equals your own address" comparison entirely.
+ */
+export async function GET() {
+  const { user, response: authError } = await requireUser();
+  if (authError) return authError;
+
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-    if (!session?.user) {
-      return NextResponse.json(
-        { message: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const user = session.user;
-    const userEmail = user.email;
-
-    const { searchParams } = new URL(req.url);
-    const email = searchParams.get("email");
-
-    if (!email) {
-      return NextResponse.json(
-        { message: "Email is required" },
-        { status: 400 }
-      );
-    }
-
-    if (email !== userEmail) {
-      return NextResponse.json(
-        { message: "You can only check your own applications" },
-        { status: 403 }
-      );
-    }
-
     const db = await connect();
     const snapshot = await db
-      .collection("formData")
-      .where("Email", "==", email)
+      .collection(APPLICATIONS_COLLECTION)
+      .where("Email", "==", user.email)
       .select("Department")
       .get();
-    const submittedDepartments = snapshot.docs.map((doc) => doc.data().Department).filter(Boolean);
 
-    return NextResponse.json({ count: snapshot.size, submittedDepartments }, { status: 200 });
+    const submittedDepartments = snapshot.docs
+      .map((doc) => doc.data().Department)
+      .filter(Boolean);
+
+    return NextResponse.json(
+      {
+        count: snapshot.size,
+        submittedDepartments,
+        remaining: Math.max(0, MAX_APPLICATIONS_PER_USER - snapshot.size),
+      },
+      { status: 200 },
+    );
   } catch (error) {
     console.error("Error checking applications:", error);
     return NextResponse.json(
-      {
-        message: "Internal server error inside check-applications dir",
-      },
-      { status: 500 }
+      { message: "Failed to check applications" },
+      { status: 500 },
     );
   }
 }

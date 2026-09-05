@@ -1,8 +1,17 @@
 rules_version = '2';
+
+// This application reaches Firestore exclusively through the Firebase Admin SDK
+// (lib/db.ts) in server-side route handlers and server components. The Admin
+// SDK bypasses these rules, so denying all direct client access costs the app
+// nothing and closes the database to the outside world.
+//
+// The previous ruleset was `allow read, write: if true` on /{document=**},
+// which exposed every applicant record and every better-auth user, session and
+// account document to anyone who knew the project id.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
