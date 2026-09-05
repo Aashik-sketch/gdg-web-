@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "verify": "npm run lint && npm run test && npm run build"
+    "verify": "next lint && vitest run && next build"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
