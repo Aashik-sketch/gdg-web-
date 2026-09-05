@@ -1,0 +1,27 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals"],
+  "ignorePatterns": [
+    "node_modules/",
+    ".next/",
+    "coverage/",
+    "next-env.d.ts",
+    "bun.lock"
+  ],
+  "rules": {
+    "react-hooks/exhaustive-deps": "warn",
+    "react/jsx-key": "error",
+    "react/no-unescaped-entities": "off",
+    "no-unused-vars": [
+      "warn",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+    "no-console": ["warn", { "allow": ["warn", "error"] }]
+  },
+  "overrides": [
+    {
+      "files": ["app/api/**/*.js", "lib/**/*.{js,ts}"],
+      "rules": { "no-console": "off" }
+    }
+  ]
+}

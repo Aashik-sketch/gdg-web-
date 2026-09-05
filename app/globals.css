@@ -2,8 +2,137 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  padding: 0;
+/*
+ * Design tokens.
+ *
+ * tailwind.config.js maps every semantic colour to hsl(var(--token)), and every
+ * component under components/ui uses those classes -- but the variables were
+ * never declared. `bg-background`, `border-border`, `text-muted-foreground`
+ * and friends all resolved to hsl() with an empty argument, which browsers
+ * discard. That is why the portal rendered as unstyled HTML.
+ *
+ * Values follow the shadcn "slate" base colour declared in components.json.
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 240 10% 5%;
+    --foreground: 210 40% 98%;
+
+    --card: 240 8% 8%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 240 8% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 240 5% 15%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 240 5% 18%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142 64% 40%;
+    --success-foreground: 210 40% 98%;
+
+    --border: 240 5% 18%;
+    --input: 240 5% 18%;
+    --ring: 217.9 10.6% 64.9%;
+  }
 }
 
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    /* Anchor links and programmatic scrolling should not jump abruptly, but
+       respect a user's reduced-motion preference. */
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+    padding: 0;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* A single consistent, visible focus ring for keyboard users across all
+     interactive elements. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Visually hidden but available to screen readers. */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
