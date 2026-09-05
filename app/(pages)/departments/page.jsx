@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { reviews } from "@/constants";
 import { MAX_APPLICATIONS_PER_USER } from "@/lib/config";
 import { useSubmissions } from "@/components/SubmissionsProvider";
+import CountdownTimer from "@/components/common/CountdownTimer";
 
 // The catalogue is a static import; there is no need to deep-clone it into
 // state via an effect. Use it directly.
@@ -137,6 +138,17 @@ const DepartmentsListPage = () => {
           >
             {selectedCount} of {MAX_APPLICATIONS_PER_USER} selected
           </p>
+
+          {/* The countdown component existed but was never rendered anywhere --
+              it was a dead import in NavBar and FormComp. It is bound to the
+              shared APPLICATION_DEADLINE, so this is the one place applicants
+              see how long they have left. */}
+          <div className="mt-6 inline-flex flex-col gap-2 rounded-lg border border-border bg-card px-5 py-4">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Applications close in
+            </span>
+            <CountdownTimer />
+          </div>
 
           {/* Inline continue button for md+ where the sticky bar is hidden. */}
           <button
